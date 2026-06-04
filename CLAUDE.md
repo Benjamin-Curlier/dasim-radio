@@ -79,6 +79,16 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 - Control: `agent.<hostId>.cmd`, `presence.heartbeat`, `cmd.degrade`
 - KV buckets: `force_tree`, `endpoints`, `configs`, `presence`, `floor_state`
 
+## Messaging library — usage conventions (consumed by the Phase-2 hosts)
+
+- One NATS connection per host via `AddDasimRadioMessaging(url, configure?)`; it pins
+  `RadioSerializerRegistry` (raw bytes for audio, source-gen JSON for control DTOs). **Every new
+  wire DTO must be added to `RadioJsonContext`** or it fails loudly at serialize time.
+- Reach KV buckets through `IControlPlaneStore` (it binds + caches each bucket); don't recreate
+  stores per call. `clientId`/`netId`/`hostId` must be single NATS tokens (no `.`/`*`/`>`).
+- NATS Services handlers (`IAgentCommandServer`) receive a **service-lifetime** token (cancelled
+  when the handle is disposed) — never pass a request- or startup-scoped token into a handler.
+
 ## Status
 
 - **Done**: solution + conventions, `Core` (force tree + floor control), `Contracts`, `Messaging`

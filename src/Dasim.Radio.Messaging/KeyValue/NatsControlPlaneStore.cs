@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Dasim.Radio.Contracts;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -9,6 +10,10 @@ namespace Dasim.Radio.Messaging.KeyValue;
 public sealed class NatsControlPlaneStore : IControlPlaneStore
 {
     private readonly NatsKVContext _kv;
+
+    // Bind (create-or-update) each bucket once and share it: accessor calls are then a cheap
+    // dictionary hit plus a typed wrapper, not a JetStream round-trip.
+    private readonly ConcurrentDictionary<string, Task<INatsKVStore>> _bindings = new(StringComparer.Ordinal);
 
     public NatsControlPlaneStore(INatsConnection connection)
     {
@@ -31,7 +36,22 @@ public sealed class NatsControlPlaneStore : IControlPlaneStore
     public async ValueTask<INatsKeyValueStore<T>> BucketAsync<T>(string bucket, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bucket);
-        INatsKVStore store = await _kv.CreateOrUpdateStoreAsync(BucketConfigs.For(bucket), cancellationToken);
-        return new NatsKeyValueStore<T>(store);
+
+        Task<INatsKVStore> binding = _bindings.GetOrAdd(bucket, Bind);
+        try
+        {
+            // Each caller waits on its own token; the shared bind runs once.
+            INatsKVStore store = await binding.WaitAsync(cancellationToken);
+            return new NatsKeyValueStore<T>(store);
+        }
+        catch
+        {
+            // Never cache a failed bind — let the next caller retry.
+            _bindings.TryRemove(new KeyValuePair<string, Task<INatsKVStore>>(bucket, binding));
+            throw;
+        }
     }
+
+    private Task<INatsKVStore> Bind(string bucket) =>
+        _kv.CreateOrUpdateStoreAsync(BucketConfigs.For(bucket)).AsTask();
 }
