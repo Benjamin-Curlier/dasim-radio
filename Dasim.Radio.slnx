@@ -2,8 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/Dasim.Radio.Contracts/Dasim.Radio.Contracts.csproj" />
     <Project Path="src/Dasim.Radio.Core/Dasim.Radio.Core.csproj" />
+    <Project Path="src/Dasim.Radio.Messaging/Dasim.Radio.Messaging.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dasim.Radio.Core.Tests/Dasim.Radio.Core.Tests.csproj" />
+    <Project Path="tests/Dasim.Radio.Integration.Tests/Dasim.Radio.Integration.Tests.csproj" />
   </Folder>
 </Solution>

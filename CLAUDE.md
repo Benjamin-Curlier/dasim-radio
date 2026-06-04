@@ -45,12 +45,16 @@ API). Shared libraries + thin deployable hosts.
 ```
 src/Dasim.Radio.Core        Domain: force tree + floor control       (no dependencies)
 src/Dasim.Radio.Contracts   NATS subjects + wire DTOs (primitives)   (no dependencies)
+src/Dasim.Radio.Messaging   NATS.Net wrappers: core audio bus, KV    (-> Contracts)
+                            control store, floor/presence/degrade
+                            signalling, agent-command service
 tests/Dasim.Radio.Core.Tests
+tests/Dasim.Radio.Integration.Tests   Testcontainers NATS round-trips
 docs/architecture.md        Design + decision log (source of truth)
 ```
 
-Planned (Phase 2): `Dasim.Radio.Messaging`, `Dasim.Radio.Audio`, `Dasim.Radio.MediaService`,
-`Dasim.Radio.Agent`, `Dasim.Radio.Client`, `Dasim.Radio.Manager`, `Dasim.Radio.Integration.Tests`.
+Planned (Phase 2): `Dasim.Radio.Audio`, `Dasim.Radio.MediaService`,
+`Dasim.Radio.Agent`, `Dasim.Radio.Client`, `Dasim.Radio.Manager`.
 
 ## Commands
 
@@ -77,10 +81,11 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 
 ## Status
 
-- **Done**: solution + conventions, `Core` (force tree + floor control), `Contracts`, unit
-  tests (13 passing), CI (Linux/Windows + SonarCloud), GitHub repo + Ruleset + wiki.
-- **Next (Phase 2)**: start from [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Messaging,
-  Audio, MediaService (libopus PoC), Agent, Client (Avalonia), Manager (Blazor).
+- **Done**: solution + conventions, `Core` (force tree + floor control), `Contracts`, `Messaging`
+  (NATS.Net wrappers + Testcontainers integration tests), unit tests (13) + integration tests (8),
+  CI (Linux/Windows + SonarCloud), GitHub repo + Ruleset + wiki.
+- **Next (Phase 2)**: continue from [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Audio,
+  MediaService (libopus PoC), Agent, Client (Avalonia), Manager (Blazor).
 
 ## Subagents (`.claude/agents/`)
 
