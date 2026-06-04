@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Dasim.Radio.Contracts/Dasim.Radio.Contracts.csproj" />
+    <Project Path="src/Dasim.Radio.Core/Dasim.Radio.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Dasim.Radio.Core.Tests/Dasim.Radio.Core.Tests.csproj" />
+  </Folder>
+</Solution>

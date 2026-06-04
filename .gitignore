@@ -1,0 +1,48 @@
+## .NET / Visual Studio
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+publish/
+artifacts/
+
+## Rider / VS / VS Code
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vscode/
+
+## Test / coverage
+[Tt]est[Rr]esult*/
+coverage*/
+*.coverage
+*.cobertura.xml
+*.opencover.xml
+*.trx
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+## SonarQube scanner
+.sonarqube/
+
+## OS noise
+.DS_Store
+Thumbs.db
+
+## Secrets / local config
+appsettings.*.local.json
+*.local.env
+
+## Claude Code (local, per-user)
+.claude/settings.local.json
