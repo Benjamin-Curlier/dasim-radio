@@ -1,5 +1,8 @@
 # Architecture
 
+> **Status: frozen for v1 (2026-06-04).** The design below is locked. Phase-2 library
+> versions are pinned in `Directory.Packages.props` after verification.
+
 ## 1. Goal
 
 A LAN-based voice radio stack mirroring a military chain of command. Push-to-talk (PTT)
@@ -78,7 +81,7 @@ decisions. `TimeProvider` is injected (no `DateTime.Now`) for deterministic test
 | D3 | **Central media service** authority | Chosen "per-listener" degradation requires central mix + DSP; also enforces strict pre-emption consistently. |
 | D4 | **Strict pre-emption** | Matches "a superior cuts off subordinates"; no queue. |
 | D5 | **Avalonia** for the client | Native audio + global PTT hotkeys; webview (Photino) does not solve the hard 80%. Blazor kept for the manager. |
-| D6 | **Concentus** (managed Opus) | Zero native deps → simple CI. Codec sits behind `Dasim.Radio.Audio`; the media service may swap to native **libopus** if per-listener encoding saturates. |
+| D6 | Codec split: **Concentus** (client), **native libopus** (media service) | Managed Concentus keeps the Avalonia client free of native deps (simple Linux packaging). The media service does the heavy per-listener encoding, so it uses native libopus for throughput. Both sit behind the `Dasim.Radio.Audio` abstraction. |
 | D7 | NATS is the single fabric | No second broker. A media service is a NATS *client*, not a replacement. "Scalable audio service" is premature at 50 pax. |
 
 ## 7. Open items for Phase 2

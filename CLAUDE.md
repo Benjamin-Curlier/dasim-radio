@@ -62,7 +62,8 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 
 ## Workflow
 
-- GitFlow: branch `feature/*` off `develop`; PR into `develop`; release via `release/*` → `main`.
+- GitHub Flow: branch `feature/*` off `main`; PR back into `main` (which stays releasable).
+- Tag releases `vX.Y.Z`. Create a `release/X.Y` branch only to patch a version already deployed in the field.
 - Every change keeps the build green and tests passing. New domain rules get unit tests first.
 
 ## NATS subject scheme (see `Dasim.Radio.Contracts.Subjects`)
@@ -75,5 +76,5 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 ## Status
 
 - **Done**: solution + conventions, `Core` (force tree + floor control), `Contracts`, unit
-  tests (13 passing), CI (Linux/Windows + Sonar), GitFlow.
+  tests (13 passing), CI (Linux/Windows + Sonar), GitHub Flow.
 - **Next**: messaging + audio abstractions, then the four hosts (Phase 2).

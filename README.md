@@ -27,7 +27,7 @@ degradation before delivering each client its own stream.
 | Client UI | Avalonia (native audio + global PTT hotkeys) |
 | Manager UI | Blazor |
 | Audio I/O | OwnAudioSharp / PortAudio / miniaudio (cross-platform) |
-| Codec | Opus via Concentus (managed); native libopus reserved for the media service |
+| Codec | Opus — Concentus (managed) in the client; native libopus in the media service |
 | Messaging | NATS (`NATS.Net`) — JetStream/KV/Services + core |
 | Tests | xUnit v3 + FakeTimeProvider; Testcontainers (NATS) for integration |
 
@@ -67,5 +67,7 @@ enable the scan (it is skipped gracefully when absent):
 
 ## Branching model
 
-GitFlow: `main` (releases) ← `develop` (integration) ← `feature/*`, with `release/*` and
-`hotfix/*` as needed. Code, comments, commits and PRs are written in **English**.
+GitHub Flow: `main` is always releasable; work happens on short-lived `feature/*` branches
+merged via PR. Releases are marked with **tags** (`vX.Y.Z`). A `release/X.Y` branch is
+created only when a version already deployed in the field must be patched without shipping
+the latest `main`. Code, comments, commits and PRs are written in **English**.
