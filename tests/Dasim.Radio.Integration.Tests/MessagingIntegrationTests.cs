@@ -86,6 +86,40 @@ public sealed class MessagingIntegrationTests : IClassFixture<NatsContainerFixtu
     }
 
     [Fact]
+    public async Task KeyValue_lists_and_watches_keys()
+    {
+        _nats.RequireContainer();
+        using var cts = new CancellationTokenSource(Timeout);
+        await using var connection = _nats.CreateConnection();
+        var store = await new NatsControlPlaneStore(connection).ForceTreeAsync(cts.Token);
+
+        var tree = new ForceTreeDto(Version: 1, new ForceNodeDto("root", "HQ", "Command", 100, []));
+        await store.PutAsync("current", tree, cts.Token);
+
+        var keys = new List<string>();
+        await foreach (string key in store.GetKeysAsync(cts.Token))
+        {
+            keys.Add(key);
+        }
+        Assert.Contains("current", keys);
+
+        // Watch replays the current Put immediately.
+        KeyValueEntry<ForceTreeDto>? watched = null;
+        await foreach (KeyValueEntry<ForceTreeDto> entry in store.WatchAsync(cts.Token))
+        {
+            watched = entry;
+            break;
+        }
+        // Field-by-field, not whole-record: ForceNodeDto.Children is an array, so record
+        // equality compares it by reference and a round-tripped copy would never match.
+        Assert.NotNull(watched);
+        Assert.Equal("current", watched.Value.Key);
+        Assert.Equal(1, watched.Value.Value.Version);
+        Assert.Equal("root", watched.Value.Value.Root.Id);
+        Assert.Equal(100, watched.Value.Value.Root.Priority);
+    }
+
+    [Fact]
     public async Task AudioBus_round_trips_a_captured_frame_with_its_client_id()
     {
         _nats.RequireContainer();
@@ -104,6 +138,23 @@ public sealed class MessagingIntegrationTests : IClassFixture<NatsContainerFixtu
     }
 
     [Fact]
+    public async Task AudioBus_round_trips_a_mixed_frame_to_its_listener()
+    {
+        _nats.RequireContainer();
+        using var cts = new CancellationTokenSource(Timeout);
+        await using var connection = _nats.CreateConnection();
+        var bus = new NatsAudioBus(connection);
+
+        byte[] payload = [0x09, 0x08, 0x07];
+        byte[] got = await ReceiveWithRetryAsync(
+            bus.SubscribeMixedAsync("alpha", cts.Token),
+            ct => bus.PublishMixedAsync("alpha", payload, ct),
+            cts.Token);
+
+        Assert.Equal(payload, got);
+    }
+
+    [Fact]
     public async Task FloorSignal_round_trips_a_request_and_an_event()
     {
         _nats.RequireContainer();
@@ -117,6 +168,13 @@ public sealed class MessagingIntegrationTests : IClassFixture<NatsContainerFixtu
             ct => signal.RequestAsync(request, ct),
             cts.Token);
         Assert.Equal(request, gotRequest);
+
+        var release = new FloorReleaseMessage("net-bravo", "cmd-1");
+        FloorReleaseMessage gotRelease = await ReceiveWithRetryAsync(
+            signal.SubscribeReleasesAsync(cts.Token),
+            ct => signal.ReleaseAsync(release, ct),
+            cts.Token);
+        Assert.Equal(release, gotRelease);
 
         var @event = new FloorEventMessage("net-bravo", "GrantedWithPreemption", "cmd-1", Preempted: "sgt-2");
         FloorEventMessage gotEvent = await ReceiveWithRetryAsync(

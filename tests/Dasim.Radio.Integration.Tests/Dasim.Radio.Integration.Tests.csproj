@@ -5,6 +5,9 @@
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Don't count compiler/source-generated code (e.g. the System.Text.Json source-gen
+         RadioJsonContext) as lines to cover — its behaviour is exercised by the round-trip tests. -->
+    <ExcludeByAttribute>GeneratedCodeAttribute</ExcludeByAttribute>
   </PropertyGroup>
 
   <ItemGroup>

@@ -41,4 +41,36 @@ public sealed class DependencyInjectionTests
         Assert.Equal("nats://localhost:4222", opts.Url);
         Assert.Equal(RadioNatsOpts.DefaultName, opts.Name);
     }
+
+    [Fact]
+    public void RadioNatsOpts_honours_a_custom_client_name()
+    {
+        NatsOpts opts = RadioNatsOpts.ForUrl("nats://localhost:4222", "media-service");
+
+        Assert.Equal("media-service", opts.Name);
+        Assert.IsType<RadioSerializerRegistry>(opts.SerializerRegistry);
+    }
+
+    [Fact]
+    public async Task AddDasimRadioMessaging_applies_the_configure_callback()
+    {
+        var services = new ServiceCollection();
+        var configured = false;
+
+        services.AddDasimRadioMessaging(
+            "nats://localhost:4222",
+            opts =>
+            {
+                configured = true;
+                return opts with { Name = "agent-host" };
+            });
+
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        var connection = (NatsConnection)provider.GetRequiredService<INatsConnection>();
+
+        Assert.True(configured);
+        Assert.Equal("agent-host", connection.Opts.Name);
+        // The callback must not be able to drop the registry by accident.
+        Assert.IsType<RadioSerializerRegistry>(connection.Opts.SerializerRegistry);
+    }
 }
