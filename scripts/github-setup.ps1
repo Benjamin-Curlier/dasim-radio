@@ -23,6 +23,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Non-zero exits from native tools (gh/git) must not abort the whole script under PowerShell 7+.
+# (Harmless no-op variable on Windows PowerShell 5.1.)
+$PSNativeCommandUseErrorActionPreference = $false
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     throw "GitHub CLI 'gh' not found. Install it: winget install --id GitHub.cli, then 'gh auth login'."
@@ -86,6 +89,10 @@ $protection = @{
 } | ConvertTo-Json -Depth 6
 $protection | gh api -X PUT "repos/$slug/branches/main/protection" `
     -H 'Accept: application/vnd.github+json' --input - | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning ("Branch protection not applied. Classic protection on a PRIVATE repo needs a paid plan. " +
+        "Use a Ruleset in the GitHub UI (Settings -> Rules), or make the repo public.")
+}
 
 # 4. Enable the wiki.
 gh api -X PATCH "repos/$slug" -f has_wiki=true | Out-Null
