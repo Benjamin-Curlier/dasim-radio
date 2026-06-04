@@ -27,6 +27,24 @@ public sealed record LaunchClientCommand(string HostId, string ConfigId);
 public sealed record StopClientCommand(string HostId);
 
 /// <summary>
+/// Request payload for the <c>agent.&lt;host&gt;.cmd</c> NATS service. The target host is
+/// encoded in the subject, so only the verb and its arguments travel in the body.
+/// <see cref="Kind"/> is one of <see cref="AgentCommandKinds"/>.
+/// </summary>
+public sealed record AgentCommandEnvelope(string Kind, string? ConfigId = null);
+
+/// <summary>Reply payload for the <c>agent.&lt;host&gt;.cmd</c> NATS service.</summary>
+public sealed record AgentCommandResult(bool Accepted, string? Error = null);
+
+/// <summary>The verbs understood by the <c>agent.&lt;host&gt;.cmd</c> service.</summary>
+public static class AgentCommandKinds
+{
+    public const string Launch = "launch";
+    public const string Stop = "stop";
+    public const string Reconfigure = "reconfigure";
+}
+
+/// <summary>
 /// Manager/app -&gt; media service: degrade a specific listener's reception
 /// (quality and clarity expressed as 0-100 percentages), optionally scoped to one net.
 /// </summary>
