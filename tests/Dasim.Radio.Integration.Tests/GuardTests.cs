@@ -82,4 +82,32 @@ public sealed class GuardTests
 
         await Assert.ThrowsAnyAsync<ArgumentException>(async () => await store.BucketAsync<EndpointDto>("", ct));
     }
+
+    [Fact]
+    public async Task ControlPlaneStore_propagates_cancellation_and_evicts_the_binding()
+    {
+        await using var connection = Offline();
+        var store = new NatsControlPlaneStore(connection);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        // A cancelled bind must surface and not be cached (the next caller may retry).
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await store.BucketAsync<EndpointDto>("endpoints", cancelled.Token));
+    }
+
+    [Fact]
+    public async Task AgentCommandServer_cleans_up_when_start_is_cancelled()
+    {
+        await using var connection = Offline();
+        var server = new NatsAgentCommandServer(connection);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await server.StartAsync(
+                "host",
+                (_, _) => ValueTask.FromResult(new AgentCommandResult(true)),
+                cancelled.Token));
+    }
 }
