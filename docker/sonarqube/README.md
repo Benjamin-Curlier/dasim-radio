@@ -1,6 +1,8 @@
-# Self-hosted SonarQube (LAN)
+# Self-hosted SonarQube (LAN) — on-prem fallback
 
-Free **SonarQube Community Build** for static analysis of the .NET code, kept on-prem.
+> The project's primary analysis runs on **SonarCloud** (free tier, see the root README).
+> This self-hosted **SonarQube Community Build** is the on-prem fallback if the code must
+> stay entirely on the LAN.
 
 ## Run
 

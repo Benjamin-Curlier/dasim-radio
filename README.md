@@ -59,11 +59,16 @@ dotnet test    Dasim.Radio.slnx -c Release
 ## CI / quality
 
 GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds and tests on
-Linux **and** Windows, then runs a SonarQube analysis. Configure two repository secrets to
-enable the scan (it is skipped gracefully when absent):
+Linux **and** Windows, then runs a **SonarCloud** analysis (free for private repos under
+50k LoC). Configure these and the scan runs automatically (it is skipped gracefully when the
+token is absent):
 
-- `SONAR_TOKEN`
-- `SONAR_HOST_URL` (your SonarQube server, or `https://sonarcloud.io`)
+- secret `SONAR_TOKEN`
+- variable `SONAR_ORGANIZATION`
+- variable `SONAR_PROJECT_KEY`
+
+An on-prem **self-hosted SonarQube Community** alternative is provided under
+[docker/sonarqube](docker/sonarqube/) as a fallback.
 
 ## Branching model
 

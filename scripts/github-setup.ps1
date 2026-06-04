@@ -123,4 +123,7 @@ foreach ($i in $issues) {
 }
 
 Write-Host "Done. Repository ready: https://github.com/$slug" -ForegroundColor Cyan
-Write-Host "Next: set Actions secrets SONAR_TOKEN and SONAR_HOST_URL to enable the Sonar job." -ForegroundColor Cyan
+Write-Host "Next, enable SonarCloud (free < 50k LoC) once you've created the project at https://sonarcloud.io:" -ForegroundColor Cyan
+Write-Host "  gh secret   set SONAR_TOKEN          # paste the SonarCloud token"
+Write-Host "  gh variable set SONAR_ORGANIZATION   --body <your-sonar-org>"
+Write-Host "  gh variable set SONAR_PROJECT_KEY    --body <your-project-key>"
