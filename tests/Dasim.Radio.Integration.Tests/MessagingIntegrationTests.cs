@@ -120,6 +120,33 @@ public sealed class MessagingIntegrationTests : IClassFixture<NatsContainerFixtu
     }
 
     [Fact]
+    public async Task AgentCommandService_cancels_the_handler_token_on_shutdown()
+    {
+        _nats.RequireContainer();
+        using var cts = new CancellationTokenSource(Timeout);
+        await using var serverConnection = _nats.CreateConnection();
+        await using var clientConnection = _nats.CreateConnection();
+
+        CancellationToken handlerToken = default;
+        var server = new NatsAgentCommandServer(serverConnection);
+        IAsyncDisposable handle = await server.StartAsync(
+            "host-9",
+            (_, token) =>
+            {
+                handlerToken = token;
+                return ValueTask.FromResult(new AgentCommandResult(true));
+            },
+            cts.Token);
+
+        var client = new NatsAgentCommandClient(clientConnection);
+        await client.StopAsync("host-9", cts.Token);
+
+        Assert.False(handlerToken.IsCancellationRequested); // live while serving
+        await handle.DisposeAsync();
+        Assert.True(handlerToken.IsCancellationRequested);  // cancelled on shutdown
+    }
+
+    [Fact]
     public async Task AudioBus_round_trips_a_captured_frame_with_its_client_id()
     {
         _nats.RequireContainer();

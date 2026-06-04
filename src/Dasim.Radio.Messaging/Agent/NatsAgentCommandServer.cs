@@ -29,30 +29,52 @@ public sealed class NatsAgentCommandServer : IAgentCommandServer
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(handler);
 
-        var services = new NatsSvcContext(_connection);
-        INatsSvcServer server = await services.AddServiceAsync(
-            new NatsSvcConfig(ServiceName, ServiceVersion)
-            {
-                Description = $"Dasim.Radio agent commands for host '{hostId}'.",
-            },
-            cancellationToken);
-
-        await server.AddEndpointAsync<AgentCommandEnvelope>(
-            handler: async msg =>
-            {
-                if (msg.Data is null)
+        // Handlers run for the whole life of the service, not just startup. They observe a token
+        // tied to the returned handle, so it cancels on shutdown — never the caller's startup token.
+        var lifetime = new CancellationTokenSource();
+        try
+        {
+            var services = new NatsSvcContext(_connection);
+            INatsSvcServer server = await services.AddServiceAsync(
+                new NatsSvcConfig(ServiceName, ServiceVersion)
                 {
-                    await msg.ReplyErrorAsync(400, "Empty agent command.", cancellationToken: CancellationToken.None);
-                    return;
-                }
+                    Description = $"Dasim.Radio agent commands for host '{hostId}'.",
+                },
+                cancellationToken);
 
-                AgentCommandResult result = await handler(msg.Data, cancellationToken);
-                await msg.ReplyAsync(result, cancellationToken: CancellationToken.None);
-            },
-            name: EndpointName,
-            subject: Subjects.Control.AgentCommand(hostId),
-            cancellationToken: cancellationToken);
+            await server.AddEndpointAsync<AgentCommandEnvelope>(
+                handler: async msg =>
+                {
+                    if (msg.Data is null)
+                    {
+                        await msg.ReplyErrorAsync(400, "Empty agent command.", cancellationToken: lifetime.Token);
+                        return;
+                    }
 
-        return server;
+                    AgentCommandResult result = await handler(msg.Data, lifetime.Token);
+                    await msg.ReplyAsync(result, cancellationToken: lifetime.Token);
+                },
+                name: EndpointName,
+                subject: Subjects.Control.AgentCommand(hostId),
+                cancellationToken: cancellationToken);
+
+            return new RunningService(server, lifetime);
+        }
+        catch
+        {
+            lifetime.Dispose();
+            throw;
+        }
+    }
+
+    // Cancels in-flight handlers, then tears the NATS service down.
+    private sealed class RunningService(INatsSvcServer server, CancellationTokenSource lifetime) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await lifetime.CancelAsync();
+            await server.DisposeAsync();
+            lifetime.Dispose();
+        }
     }
 }

@@ -15,7 +15,14 @@ namespace Dasim.Radio.Integration.Tests;
 /// <summary>Argument-guard tests for the wrappers (no broker — the connection never connects).</summary>
 public sealed class GuardTests
 {
-    private static NatsConnection Offline() => new(RadioNatsOpts.ForUrl("nats://localhost:4222"));
+    // Points at a closed port and never retries, so any operation that needs the broker fails
+    // fast and deterministically (used by the error-path tests below).
+    private static NatsConnection Offline() =>
+        new(RadioNatsOpts.ForUrl("nats://127.0.0.1:14222") with
+        {
+            RetryOnInitialConnect = false,
+            ConnectTimeout = TimeSpan.FromSeconds(2),
+        });
 
     [Fact]
     public void Wrappers_reject_a_null_connection()
@@ -81,5 +88,31 @@ public sealed class GuardTests
         var store = new NatsControlPlaneStore(connection);
 
         await Assert.ThrowsAnyAsync<ArgumentException>(async () => await store.BucketAsync<EndpointDto>("", ct));
+    }
+
+    [Fact]
+    public async Task ControlPlaneStore_propagates_a_failed_binding_and_does_not_cache_it()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using var connection = Offline();
+        var store = new NatsControlPlaneStore(connection);
+
+        // The bind can't reach the broker, so it faults; the failure surfaces and is evicted, so a
+        // second call re-binds (and fails) rather than returning a poisoned cached task.
+        await Assert.ThrowsAnyAsync<Exception>(async () => await store.BucketAsync<EndpointDto>("endpoints", ct));
+        await Assert.ThrowsAnyAsync<Exception>(async () => await store.BucketAsync<EndpointDto>("endpoints", ct));
+    }
+
+    [Fact]
+    public async Task AgentCommandServer_cleans_up_when_start_fails()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using var connection = Offline();
+        var server = new NatsAgentCommandServer(connection);
+
+        await Assert.ThrowsAnyAsync<Exception>(async () => await server.StartAsync(
+            "host",
+            (_, _) => ValueTask.FromResult(new AgentCommandResult(true)),
+            ct));
     }
 }
