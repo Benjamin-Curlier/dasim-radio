@@ -63,6 +63,8 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 ## Workflow
 
 - GitHub Flow: branch `feature/*` off `main`; PR back into `main` (which stays releasable).
+- `main` is protected by a Ruleset: **PRs are required** and CI (Linux + Windows) must pass.
+  No direct pushes; self-merge is allowed (0 reviews).
 - Tag releases `vX.Y.Z`. Create a `release/X.Y` branch only to patch a version already deployed in the field.
 - Every change keeps the build green and tests passing. New domain rules get unit tests first.
 
@@ -76,5 +78,11 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 ## Status
 
 - **Done**: solution + conventions, `Core` (force tree + floor control), `Contracts`, unit
-  tests (13 passing), CI (Linux/Windows + Sonar), GitHub Flow.
-- **Next**: messaging + audio abstractions, then the four hosts (Phase 2).
+  tests (13 passing), CI (Linux/Windows + SonarCloud), GitHub repo + Ruleset + wiki.
+- **Next (Phase 2)**: start from [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Messaging,
+  Audio, MediaService (libopus PoC), Agent, Client (Avalonia), Manager (Blazor).
+
+## Subagents (`.claude/agents/`)
+
+- **floor-control-reviewer** — for `Core` floor-control + `Contracts` changes.
+- **realtime-audio-reviewer** — for `Audio`/`MediaService` hot-path changes.
