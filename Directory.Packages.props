@@ -7,6 +7,7 @@
     <!-- Versions are populated via `dotnet add package` (Central Package Management). -->
   </ItemGroup>
   <ItemGroup>
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Concentus" Version="2.2.2" />
     <PackageVersion Include="coverlet.msbuild" Version="10.0.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -17,6 +18,8 @@
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.6.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
     <PackageVersion Include="NATS.Net" Version="2.8.1" />
+    <PackageVersion Include="OpusSharp.Core" Version="1.6.1.3" />
+    <PackageVersion Include="OpusSharp.Natives" Version="1.6.1.3" />
     <PackageVersion Include="Testcontainers.Nats" Version="4.12.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

@@ -11,6 +11,9 @@ build/
 publish/
 artifacts/
 
+## BenchmarkDotNet output
+BenchmarkDotNet.Artifacts/
+
 ## Rider / VS / VS Code
 .vs/
 .idea/

@@ -37,6 +37,32 @@ public sealed record OpusEncoderSettings
 
     /// <summary>Expected packet loss 0–100, driving FEC redundancy. 0 effectively disables FEC.</summary>
     public int ExpectedPacketLossPercent { get; init; }
+
+    /// <summary>
+    /// Throws <see cref="ArgumentOutOfRangeException"/> if any tuning value is outside its
+    /// Opus-legal range. Codec factories call this so every implementation enforces the same limits.
+    /// </summary>
+    public void Validate()
+    {
+        if (Complexity is < 0 or > 10)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(Complexity), Complexity, "Opus complexity must be between 0 and 10.");
+        }
+
+        if (BitrateBitsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(BitrateBitsPerSecond), BitrateBitsPerSecond, "Opus bitrate must be positive.");
+        }
+
+        if (ExpectedPacketLossPercent is < 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(ExpectedPacketLossPercent), ExpectedPacketLossPercent,
+                "Expected packet loss must be between 0 and 100 percent.");
+        }
+    }
 }
 
 /// <summary>
