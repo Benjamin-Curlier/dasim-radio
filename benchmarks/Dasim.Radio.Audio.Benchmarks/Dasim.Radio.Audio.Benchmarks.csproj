@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Match the media-service host GC so the measured allocation/pause behavior is representative. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dasim.Radio.Audio\Dasim.Radio.Audio.csproj" />
+    <ProjectReference Include="..\..\src\Dasim.Radio.Audio.Concentus\Dasim.Radio.Audio.Concentus.csproj" />
+    <ProjectReference Include="..\..\src\Dasim.Radio.Audio.Opus\Dasim.Radio.Audio.Opus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+</Project>

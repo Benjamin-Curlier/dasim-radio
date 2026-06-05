@@ -133,26 +133,7 @@ public sealed class ConcentusOpusEncoderFactory : IOpusEncoderFactory
     public IOpusEncoder Create(AudioFormat format, OpusEncoderSettings? settings = null)
     {
         settings ??= new OpusEncoderSettings();
-
-        if (settings.Complexity is < 0 or > 10)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(settings), settings.Complexity, "Opus complexity must be between 0 and 10.");
-        }
-
-        if (settings.BitrateBitsPerSecond <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(settings), settings.BitrateBitsPerSecond, "Opus bitrate must be positive.");
-        }
-
-        if (settings.ExpectedPacketLossPercent is < 0 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(settings), settings.ExpectedPacketLossPercent,
-                "Expected packet loss must be between 0 and 100 percent.");
-        }
-
+        settings.Validate();
         return new ConcentusOpusEncoder(format, settings);
     }
 }
