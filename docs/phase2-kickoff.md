@@ -25,6 +25,11 @@
     index-not-`foreach`), added **profile encode-sharing**, **in-place encoder retune**
     (`IOpusEncoder.Retune`), and an **xorshift clarity** dither. ~185 KB/tick → **0**. Re-reviewed
     clean by both domain agents.
+  - **Agent** (#8, PR #29) — `Dasim.Radio.Agent` daemon: presence heartbeat (core-NATS channel +
+    TTL'd `presence` KV, immediate beat, graceful deregister) + `agent.<host>.cmd` NATS service
+    (launch/stop/reconfigure, never-throw dispatch) + single-child process controller (one `Lock`,
+    `IProcessRunner` seam) + validated `AgentOptions` + systemd/Windows Service hosting. No `Contracts`
+    change. Native AOT kept friendly (source-gen JSON) but `PublishAot` deferred (0-warning gate).
 - **Deferred (open issues):** per-net degrade scoping (#24, currently whole-listener); drop stale audio
   under sustained data-plane saturation (#27 — the publish loop relies on NATS.Net write-pipe back-pressure).
 - **Tooling facts:** .NET SDK 10.0.201; `gh` installed at `C:\Program Files\GitHub CLI`
@@ -60,8 +65,8 @@ gh pr merge --squash --delete-branch
 Issues are tracked on GitHub under the **`phase:2`** label:
 <https://github.com/Benjamin-Curlier/dasim-radio/issues?q=is%3Aissue+label%3Aphase%3A2>
 
-> **Next up: item 4 (Agent), then 5 (Client) / 6 (Manager).** Items 1–3 are ✅ done (see "Where we
-> are"). Before the client (item 5), spike the **Wayland PTT** risk (issue #12).
+> **Next up: item 5 (Client) / 6 (Manager).** Items 1–4 are ✅ done (see "Where we are"). Before the
+> client (item 5), spike the **Wayland PTT** risk (issue #12) — that spike is the immediate next task.
 
 1. ✅ **DONE — `Dasim.Radio.Messaging`** + `tests/Dasim.Radio.Integration.Tests`
    - `dotnet add` : `NATS.Net` (core/JetStream/KV/Services). Tests: `Testcontainers`.
@@ -84,8 +89,13 @@ Issues are tracked on GitHub under the **`phase:2`** label:
      `(source-set, quality, clarity)` profile) + the measured per-frame perf pass are **done** — see
      [routing-mix-model.md](routing-mix-model.md) §6 and the `MixHotPath` benchmark.
 
-4. **`feature/agent` → `Dasim.Radio.Agent`** — daemon: presence heartbeat (discovery) +
-   `agent.<host>.cmd` (launch/stop/reconfigure) via NATS Services. Consider Native AOT.
+4. ✅ **DONE — `Dasim.Radio.Agent`** (issue #8, PR #29) — daemon: presence heartbeat (core-NATS
+   channel + TTL'd `presence` KV) + `agent.<host>.cmd` (launch/stop/reconfigure) via NATS Services +
+   single-client process controller behind an `IProcessRunner` seam + systemd/Windows Service hosting.
+   Native AOT kept friendly (source-gen JSON) but `PublishAot` deferred to keep the 0-warning gate
+   (NATS.Net/Hosting trim warnings). `PresenceHeartbeat.ClientId` carries the launched `configId` as a
+   placeholder until the client reports its real audio id. Reviewed with the **dotnet code-reviewer**
+   agent (the floor/audio domain reviewers don't apply — no `Contracts`/hot-path change).
 
 5. **`feature/client` → `Dasim.Radio.Client`** — Avalonia: device selection + **global PTT via
    SharpHook**.

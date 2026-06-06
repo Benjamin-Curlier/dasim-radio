@@ -125,11 +125,15 @@ dotnet add <project> package <id>             # add a dependency (CPM)
   allocation-free `Deliveries`/`Render` (pooled buffers, version-cached floor snapshot), profile-keyed
   encode-sharing, in-place encoder retune (no rebuild glitch), xorshift clarity dither — `MixHotPath`
   benchmark shows ~185 KB/tick → 0. CI (Linux/Windows + SonarCloud ≥80% new-code), GitHub Ruleset + wiki.
+  `Agent` (#8, PR #29) — `Dasim.Radio.Agent` daemon: presence heartbeat (core-NATS channel + TTL'd
+  `presence` KV) + `agent.<host>.cmd` NATS service (launch/stop/reconfigure) + single-client process
+  controller (`IProcessRunner` seam, one `Lock`) + validated `AgentOptions` + systemd/Windows Service
+  hosting. Native AOT kept friendly; `PublishAot` deferred (0-warning gate).
 - **Deferred (tracked as issues)**: per-net degrade scoping (currently whole-listener); NATS security
   refinement (issue #11); under sustained data-plane saturation, drop stale audio rather than buffer
   (today the publish loop relies on NATS.Net's internal write-pipe back-pressure — see `MediaRouterService`).
-- **Next (Phase 2)**: see [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Agent, Client
-  (Avalonia, ⚠️ spike Wayland PTT first), Manager (Blazor), device I/O (`OwnAudioSharp`).
+- **Next (Phase 2)**: see [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Client
+  (Avalonia, ⚠️ spike Wayland PTT first — issue #12), Manager (Blazor), device I/O (`OwnAudioSharp`).
 
 ## Subagents (`.claude/agents/`)
 
