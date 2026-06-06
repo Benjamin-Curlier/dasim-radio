@@ -133,6 +133,59 @@ public sealed class FloorControlServiceTests
     }
 
     [Fact]
+    public void Version_advances_on_grant_preemption_and_release_but_not_on_denial()
+    {
+        long start = _sut.Version;
+        var subordinate = new ParticipantId("sub");
+        var chief = new ParticipantId("chief");
+        var nobody = new ParticipantId("nobody");
+
+        _sut.RequestFloor(Net, subordinate, new Priority(1)); // grant
+        long afterGrant = _sut.Version;
+        Assert.True(afterGrant > start);
+
+        _sut.RequestFloor(Net, nobody, new Priority(1)); // denied (equal priority)
+        Assert.Equal(afterGrant, _sut.Version);
+
+        _sut.RequestFloor(Net, chief, new Priority(5)); // pre-emption
+        long afterPreempt = _sut.Version;
+        Assert.True(afterPreempt > afterGrant);
+
+        _sut.ReleaseFloor(Net, nobody); // not the holder => ignored
+        Assert.Equal(afterPreempt, _sut.Version);
+
+        _sut.ReleaseFloor(Net, chief); // release
+        Assert.True(_sut.Version > afterPreempt);
+    }
+
+    [Fact]
+    public void Version_does_not_advance_on_a_same_priority_re_request()
+    {
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(3));
+        long afterGrant = _sut.Version;
+
+        // A keep-alive re-press at the same priority changes nothing — it must not invalidate the cache.
+        FloorDecision again = _sut.RequestFloor(Net, holder, new Priority(3));
+
+        Assert.Equal(FloorOutcome.Granted, again.Outcome);
+        Assert.Equal(afterGrant, _sut.Version);
+    }
+
+    [Fact]
+    public void Version_advances_when_the_holder_re_requests_at_a_new_priority()
+    {
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(3));
+        long afterGrant = _sut.Version;
+
+        // The holder's priority is part of what the router mixes on, so a refresh is a real change.
+        _sut.RequestFloor(Net, holder, new Priority(7));
+
+        Assert.True(_sut.Version > afterGrant);
+    }
+
+    [Fact]
     public void ActiveFloors_lists_only_held_nets()
     {
         var netA = new NetId("net-a");

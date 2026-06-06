@@ -23,6 +23,16 @@ public sealed class MediaRouter
     private readonly IFloorHolders _holders;
     private readonly IMixPolicy _policy;
 
+    // Reused per-frame scratch. The media router is driven from a single consumer (the data-plane
+    // service), so one tick fully completes — Deliveries is computed AND consumed by the renderer —
+    // before the next begins; reusing these across frames is safe and keeps the hot path allocation
+    // free. The returned list and each delivery's source buffer alias this state, so the caller must
+    // finish with one tick's deliveries before requesting the next.
+    private readonly List<MixDelivery> _deliveries = [];
+    private readonly List<NetId> _heldNets = [];
+    private readonly HashSet<ParticipantId> _seen = [];
+    private readonly List<List<MixSource>> _sourcePool = [];
+
     public MediaRouter(IForceTreeProvider force, IFloorHolders holders, IMixPolicy policy)
     {
         _force = force ?? throw new ArgumentNullException(nameof(force));
@@ -33,56 +43,79 @@ public sealed class MediaRouter
     /// <summary>The mixes that <paramref name="speaker"/>'s current frame should drive (empty if it holds no net).</summary>
     public IReadOnlyList<MixDelivery> Deliveries(ParticipantId speaker)
     {
+        _deliveries.Clear();
+
         ForceRouting routing = _force.Current;
         NetMembership membership = routing.Topology.MembershipOf(speaker);
         if (membership.Nets.Count == 0)
         {
-            return [];
+            return _deliveries;
         }
 
         FloorHolders holders = _holders.Current();
 
-        List<NetId>? heldNets = null;
-        foreach (NetId net in membership.Nets)
+        _heldNets.Clear();
+
+        // Index-based loops throughout: a foreach over an IReadOnlyList<T>-typed value boxes the
+        // enumerator on the heap every call, which on this per-frame path is exactly the churn we are
+        // removing. Count/indexer access allocates nothing.
+        IReadOnlyList<NetId> nets = membership.Nets;
+        for (int n = 0; n < nets.Count; n++)
         {
+            NetId net = nets[n];
             if (holders.TryGetHolder(net, out MixSource holder) && holder.Speaker == speaker)
             {
-                (heldNets ??= []).Add(net);
+                _heldNets.Add(net);
             }
         }
 
-        if (heldNets is null)
+        if (_heldNets.Count == 0)
         {
             // The speaker is transmitting without the floor (denied or released) — drives nothing.
-            return [];
+            return _deliveries;
         }
 
-        var deliveries = new List<MixDelivery>();
-        var seen = new HashSet<ParticipantId>();
-        foreach (NetId net in heldNets)
+        _seen.Clear();
+        for (int h = 0; h < _heldNets.Count; h++)
         {
-            foreach (ParticipantId listener in routing.Topology.MembersOf(net))
+            IReadOnlyList<ParticipantId> members = routing.Topology.MembersOf(_heldNets[h]);
+            for (int m = 0; m < members.Count; m++)
             {
-                if (listener == speaker || !seen.Add(listener))
+                ParticipantId listener = members[m];
+                if (listener == speaker || !_seen.Add(listener))
                 {
                     continue;
                 }
 
-                MixPlan plan = routing.Planner.PlanFor(listener, holders, _policy);
-                if (plan.Sources.Count == 0)
+                // Plan into the next pooled buffer; it is only "committed" (kept, and the pool index
+                // advanced) when the listener actually receives a delivery, so skipped listeners reuse
+                // the same scratch slot.
+                List<MixSource> sources = RentSourceBuffer(_deliveries.Count);
+                routing.Planner.PlanInto(listener, holders, _policy, sources);
+                if (sources.Count == 0)
                 {
                     continue;
                 }
 
                 // Emit this listener's mix only when the frame is from their trigger source, so a
                 // multi-source listener is driven once per cycle (by their highest-priority source).
-                if (MixSources.Highest(plan.Sources).Speaker == speaker)
+                if (MixSources.Highest(sources).Speaker == speaker)
                 {
-                    deliveries.Add(new MixDelivery(listener, plan.Sources));
+                    _deliveries.Add(new MixDelivery(listener, sources));
                 }
             }
         }
 
-        return deliveries;
+        return _deliveries;
+    }
+
+    private List<MixSource> RentSourceBuffer(int index)
+    {
+        while (_sourcePool.Count <= index)
+        {
+            _sourcePool.Add(new List<MixSource>(capacity: 2));
+        }
+
+        return _sourcePool[index];
     }
 }

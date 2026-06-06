@@ -84,6 +84,15 @@ public interface IOpusEncoder : IDisposable
     /// update the sender may choose not to transmit.
     /// </summary>
     int Encode(ReadOnlySpan<short> pcm, Span<byte> output);
+
+    /// <summary>
+    /// Re-tunes the runtime-adjustable encoder parameters (bitrate, complexity, DTX, FEC, expected
+    /// packet loss) in place via the corresponding Opus CTLs, <em>keeping the encoder's inter-frame
+    /// state</em> so the stream stays continuous. Use this when a listener's quality changes mid-stream
+    /// instead of disposing and recreating the encoder, which resets the state and produces an audible
+    /// click. The coding <see cref="OpusApplication"/> is fixed at construction and is ignored here.
+    /// </summary>
+    void Retune(OpusEncoderSettings settings);
 }
 
 /// <summary>

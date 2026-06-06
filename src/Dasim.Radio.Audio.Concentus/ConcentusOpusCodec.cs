@@ -32,11 +32,7 @@ public sealed class ConcentusOpusEncoder : IOpusEncoder
                 format.SampleRateHz, format.Channels, settings.Application.ToConcentus(), null)
             ?? throw new InvalidOperationException("Concentus returned a null encoder.");
 
-        _encoder.Bitrate = settings.BitrateBitsPerSecond;
-        _encoder.Complexity = settings.Complexity;
-        _encoder.UseDTX = settings.UseDtx;
-        _encoder.UseInbandFEC = settings.UseInBandFec;
-        _encoder.PacketLossPercent = settings.ExpectedPacketLossPercent;
+        ApplyTuning(settings);
     }
 
     public AudioFormat Format { get; }
@@ -55,10 +51,27 @@ public sealed class ConcentusOpusEncoder : IOpusEncoder
         return _encoder.Encode(pcm, Format.SamplesPerChannel, output, output.Length);
     }
 
+    public void Retune(OpusEncoderSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
+        ApplyTuning(settings);
+    }
+
     public void Dispose()
     {
         (_encoder as IDisposable)?.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    // Sets only the runtime-adjustable parameters; the application/sample-rate are bound at creation.
+    private void ApplyTuning(OpusEncoderSettings settings)
+    {
+        _encoder.Bitrate = settings.BitrateBitsPerSecond;
+        _encoder.Complexity = settings.Complexity;
+        _encoder.UseDTX = settings.UseDtx;
+        _encoder.UseInbandFEC = settings.UseInBandFec;
+        _encoder.PacketLossPercent = settings.ExpectedPacketLossPercent;
     }
 }
 

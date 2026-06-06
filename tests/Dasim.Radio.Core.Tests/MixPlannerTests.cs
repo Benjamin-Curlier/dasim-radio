@@ -105,4 +105,31 @@ public sealed class MixPlannerTests
         Assert.Equal(Participant(A1), held.Speaker);
         Assert.False(holders.TryGetHolder(Net("ghost"), out _));
     }
+
+    [Fact]
+    public void Plan_into_matches_plan_for_under_both_policies()
+    {
+        FloorHolders holders = FloorHolders.From([Holder(A1a, P1, 20), Holder(A1, A1, 60)]);
+        var buffer = new List<MixSource>();
+
+        foreach (IMixPolicy policy in (IMixPolicy[])[Additive, Override])
+        {
+            MixPlan expected = _sut.PlanFor(Participant(A1a), holders, policy);
+            _sut.PlanInto(Participant(A1a), holders, policy, buffer);
+
+            Assert.Equal(
+                expected.Sources.Select(s => s.Speaker.Value).OrderBy(v => v, StringComparer.Ordinal),
+                buffer.Select(s => s.Speaker.Value).OrderBy(v => v, StringComparer.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void Plan_into_clears_the_buffer_when_the_listener_hears_nothing()
+    {
+        var buffer = new List<MixSource> { Holder("stale", "stale", 1) };
+
+        _sut.PlanInto(Participant(P1), FloorHolders.Empty, Override, buffer);
+
+        Assert.Empty(buffer);
+    }
 }

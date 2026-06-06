@@ -150,6 +150,37 @@ public sealed class OpusSharpCodecTests
         Assert.Throws<ArgumentException>(() => decoder.Decode(packet.AsSpan(0, bytes), new short[100]));
     }
 
+    [Fact]
+    public void Retune_lowers_the_bitrate_in_place_while_the_stream_stays_continuous()
+    {
+        AudioFormat fmt = AudioFormat.Voice;
+        using IOpusEncoder encoder = EncoderFactory.Create(
+            fmt, new OpusEncoderSettings { BitrateBitsPerSecond = 64_000 });
+        using IOpusDecoder decoder = DecoderFactory.Create(fmt);
+
+        byte[] packet = new byte[OpusConstants.RecommendedMaxPacketBytes];
+        short[] decoded = new short[fmt.SamplesPerFrame];
+
+        int highBytes = EncodeWarmFrame(encoder, decoder, packet, decoded, startFrame: 0);
+
+        // Re-tune the SAME native encoder to a much lower bitrate (no rebuild) ...
+        encoder.Retune(new OpusEncoderSettings { BitrateBitsPerSecond = 8_000 });
+
+        int lowBytes = EncodeWarmFrame(encoder, decoder, packet, decoded, startFrame: 30);
+
+        Assert.True(lowBytes < highBytes, $"expected the re-tune to shrink the packet ({lowBytes} vs {highBytes})");
+        Assert.True(Rms(decoded) > 1_000, "the re-tuned stream should still decode to audio (continuity preserved)");
+    }
+
+    [Fact]
+    public void Retune_rejects_out_of_range_settings()
+    {
+        using IOpusEncoder encoder = EncoderFactory.Create(AudioFormat.Voice);
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => encoder.Retune(new OpusEncoderSettings { Complexity = 99 }));
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(11)]
@@ -157,6 +188,21 @@ public sealed class OpusSharpCodecTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(
             () => EncoderFactory.Create(AudioFormat.Voice, new OpusEncoderSettings { Complexity = complexity }));
+    }
+
+    // Encodes a short run from startFrame (so rate control settles) and returns the last frame's size,
+    // decoding each in order so the encoder/decoder pair stays in lockstep.
+    private static int EncodeWarmFrame(
+        IOpusEncoder encoder, IOpusDecoder decoder, byte[] packet, short[] decoded, int startFrame)
+    {
+        int bytes = 0;
+        for (int frame = startFrame; frame < startFrame + 20; frame++)
+        {
+            bytes = encoder.Encode(Sine(AudioFormat.Voice, 440, frame), packet);
+            decoder.Decode(packet.AsSpan(0, bytes), decoded);
+        }
+
+        return bytes;
     }
 
     [Fact]

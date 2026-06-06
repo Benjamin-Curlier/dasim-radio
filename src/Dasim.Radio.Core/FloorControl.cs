@@ -34,6 +34,14 @@ public sealed record FloorDecision(
     string? Reason = null)
 {
     public bool IsGranted => Outcome is FloorOutcome.Granted or FloorOutcome.GrantedWithPreemption;
+
+    /// <summary>
+    /// Whether this decision actually changed the held set. True for every grant, pre-emption,
+    /// priority refresh and release; false only for a no-op idempotent re-grant (the holder re-requested
+    /// at the same priority). Drives <see cref="FloorControlService.Version"/> so a chatty keep-alive
+    /// does not force the router to rebuild its holder snapshot for nothing.
+    /// </summary>
+    public bool Changed { get; init; } = true;
 }
 
 /// <summary>
@@ -46,6 +54,7 @@ public sealed class FloorControlService
 {
     private readonly TimeProvider _clock;
     private readonly ConcurrentDictionary<NetId, NetFloor> _nets = new();
+    private long _version;
 
     public FloorControlService(TimeProvider clock)
     {
@@ -53,13 +62,37 @@ public sealed class FloorControlService
         _clock = clock;
     }
 
+    /// <summary>
+    /// A monotonic counter bumped whenever the held set changes (a grant, pre-emption, priority
+    /// refresh or release). Lets a per-frame reader — the router's <c>FloorControlHolders</c> — cache
+    /// its holder snapshot and rebuild it only when this changes, instead of every 20 ms tick. A
+    /// denied request leaves it untouched.
+    /// </summary>
+    public long Version => Interlocked.Read(ref _version);
+
     /// <summary>Requests transmission on a net (push-to-talk pressed).</summary>
-    public FloorDecision RequestFloor(NetId net, ParticipantId participant, Priority priority) =>
-        GetFloor(net).Request(participant, priority, _clock.GetUtcNow());
+    public FloorDecision RequestFloor(NetId net, ParticipantId participant, Priority priority)
+    {
+        FloorDecision decision = GetFloor(net).Request(participant, priority, _clock.GetUtcNow());
+        if (decision.IsGranted && decision.Changed)
+        {
+            Interlocked.Increment(ref _version);
+        }
+
+        return decision;
+    }
 
     /// <summary>Releases transmission on a net (push-to-talk released).</summary>
-    public FloorDecision ReleaseFloor(NetId net, ParticipantId participant) =>
-        GetFloor(net).Release(participant);
+    public FloorDecision ReleaseFloor(NetId net, ParticipantId participant)
+    {
+        FloorDecision decision = GetFloor(net).Release(participant);
+        if (decision.IsGranted && decision.Changed)
+        {
+            Interlocked.Increment(ref _version);
+        }
+
+        return decision;
+    }
 
     /// <summary>Returns the current state of a net's floor.</summary>
     public FloorSnapshot GetSnapshot(NetId net) => GetFloor(net).Snapshot();
@@ -104,9 +137,12 @@ public sealed class FloorControlService
 
                 if (_holder.Value == participant)
                 {
-                    // Already holding: refresh priority and grant idempotently.
+                    // Already holding: refresh priority and grant idempotently. Only a priority change
+                    // actually mutates the held set (the holder's priority is part of what the router
+                    // reads), so a same-priority re-request is a no-op for versioning purposes.
+                    bool changed = _priority!.Value != priority;
                     _priority = priority;
-                    return new FloorDecision(FloorOutcome.Granted, net, participant);
+                    return new FloorDecision(FloorOutcome.Granted, net, participant) { Changed = changed };
                 }
 
                 if (priority > _priority!.Value)

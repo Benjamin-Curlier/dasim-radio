@@ -41,11 +41,7 @@ public sealed class OpusSharpEncoder : IOpusEncoder
 
         try
         {
-            _encoder.Ctl(EncoderCtl.OPUS_SET_BITRATE, settings.BitrateBitsPerSecond);
-            _encoder.Ctl(EncoderCtl.OPUS_SET_COMPLEXITY, settings.Complexity);
-            _encoder.Ctl(EncoderCtl.OPUS_SET_DTX, settings.UseDtx ? 1 : 0);
-            _encoder.Ctl(EncoderCtl.OPUS_SET_INBAND_FEC, settings.UseInBandFec ? 1 : 0);
-            _encoder.Ctl(EncoderCtl.OPUS_SET_PACKET_LOSS_PERC, settings.ExpectedPacketLossPercent);
+            ApplyTuning(settings);
         }
         catch
         {
@@ -71,10 +67,27 @@ public sealed class OpusSharpEncoder : IOpusEncoder
         return _encoder.Encode(pcm.AsNativeConstInput(), Format.SamplesPerChannel, output, output.Length);
     }
 
+    public void Retune(OpusEncoderSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
+        ApplyTuning(settings);
+    }
+
     public void Dispose()
     {
         _encoder.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    // Sets only the runtime-adjustable CTLs; the application/sample-rate are bound at creation.
+    private void ApplyTuning(OpusEncoderSettings settings)
+    {
+        _encoder.Ctl(EncoderCtl.OPUS_SET_BITRATE, settings.BitrateBitsPerSecond);
+        _encoder.Ctl(EncoderCtl.OPUS_SET_COMPLEXITY, settings.Complexity);
+        _encoder.Ctl(EncoderCtl.OPUS_SET_DTX, settings.UseDtx ? 1 : 0);
+        _encoder.Ctl(EncoderCtl.OPUS_SET_INBAND_FEC, settings.UseInBandFec ? 1 : 0);
+        _encoder.Ctl(EncoderCtl.OPUS_SET_PACKET_LOSS_PERC, settings.ExpectedPacketLossPercent);
     }
 }
 

@@ -77,4 +77,48 @@ public sealed class MixPolicyTests
     {
         Assert.Throws<ArgumentException>(() => MixSources.Highest([]));
     }
+
+    [Fact]
+    public void Additive_select_in_place_keeps_every_candidate()
+    {
+        var candidates = new List<MixSource> { Source("a", 10), Source("b", 20) };
+
+        new AdditiveMixPolicy().SelectInPlace(candidates);
+
+        Assert.Equal(["a", "b"], candidates.Select(s => s.Speaker.Value));
+    }
+
+    [Fact]
+    public void Override_select_in_place_reduces_to_the_highest()
+    {
+        var candidates = new List<MixSource> { Source("a", 10), Source("b", 30), Source("c", 20) };
+
+        new PriorityOverrideMixPolicy().SelectInPlace(candidates);
+
+        MixSource winner = Assert.Single(candidates);
+        Assert.Equal("b", winner.Speaker.Value);
+    }
+
+    [Fact]
+    public void Override_select_in_place_matches_select_on_ties()
+    {
+        var candidates = new List<MixSource> { Source("zulu", 50), Source("alpha", 50) };
+
+        new PriorityOverrideMixPolicy().SelectInPlace(candidates);
+
+        Assert.Equal("alpha", Assert.Single(candidates).Speaker.Value);
+    }
+
+    [Fact]
+    public void Select_in_place_leaves_a_single_candidate_untouched()
+    {
+        var additive = new List<MixSource> { Source("a", 10) };
+        var overridden = new List<MixSource> { Source("a", 10) };
+
+        new AdditiveMixPolicy().SelectInPlace(additive);
+        new PriorityOverrideMixPolicy().SelectInPlace(overridden);
+
+        Assert.Equal("a", Assert.Single(additive).Speaker.Value);
+        Assert.Equal("a", Assert.Single(overridden).Speaker.Value);
+    }
 }

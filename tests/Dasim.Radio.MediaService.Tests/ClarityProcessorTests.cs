@@ -6,7 +6,7 @@ namespace Dasim.Radio.MediaService.Tests;
 public sealed class ClarityProcessorTests
 {
     // A fixed seed keeps the additive noise deterministic.
-    private readonly ClarityProcessor _sut = new(new Random(1));
+    private readonly ClarityProcessor _sut = new(noiseSeed: 1);
 
     [Fact]
     public void Clarity_100_is_a_no_op()
