@@ -17,12 +17,15 @@ public sealed class MediaRouterService : BackgroundService
 
     private readonly IAudioBus _audioBus;
     private readonly MediaRouter _router;
+    private readonly MixRenderer _renderer;
     private readonly ILogger<MediaRouterService> _logger;
 
-    public MediaRouterService(IAudioBus audioBus, MediaRouter router, ILogger<MediaRouterService> logger)
+    public MediaRouterService(
+        IAudioBus audioBus, MediaRouter router, MixRenderer renderer, ILogger<MediaRouterService> logger)
     {
         _audioBus = audioBus ?? throw new ArgumentNullException(nameof(audioBus));
         _router = router ?? throw new ArgumentNullException(nameof(router));
+        _renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -75,9 +78,16 @@ public sealed class MediaRouterService : BackgroundService
 
         var speaker = new ParticipantId(frame.ClientId);
         IReadOnlyList<ParticipantId> recipients = _router.Recipients(speaker);
-        foreach (ParticipantId listener in recipients)
+        if (recipients.Count == 0)
         {
-            await _audioBus.PublishMixedAsync(listener.Value, frame.Opus, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // Pass-through for undegraded listeners, decode → degrade → re-encode for the rest.
+        foreach (RenderedFrame rendered in _renderer.Render(speaker, frame.Opus, recipients))
+        {
+            await _audioBus.PublishMixedAsync(rendered.Listener.Value, rendered.Opus, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 }

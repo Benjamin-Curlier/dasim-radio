@@ -1,3 +1,4 @@
+using Dasim.Radio.MediaService.Degrade;
 using Dasim.Radio.MediaService.Floor;
 using Dasim.Radio.MediaService.Routing;
 using Dasim.Radio.Messaging;
@@ -43,11 +44,13 @@ public sealed class CompositionTests
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 
         Assert.NotNull(provider.GetRequiredService<MediaRouter>());
+        Assert.NotNull(provider.GetRequiredService<MixRenderer>());
         // The authoritative resolver has replaced the interim client-trusting one.
         Assert.IsType<ForceTreePriorityResolver>(provider.GetRequiredService<IFloorPriorityResolver>());
 
         IHostedService[] hosted = [.. provider.GetServices<IHostedService>()];
         Assert.Contains(hosted, service => service is ForceTreeProvider);
         Assert.Contains(hosted, service => service is MediaRouterService);
+        Assert.Contains(hosted, service => service is DegradeCommandService);
     }
 }

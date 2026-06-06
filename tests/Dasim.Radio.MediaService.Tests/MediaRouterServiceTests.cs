@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Dasim.Radio.Core;
+using Dasim.Radio.MediaService.Degrade;
 using Dasim.Radio.MediaService.Routing;
 using Dasim.Radio.Messaging.Audio;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,6 +16,10 @@ public sealed class MediaRouterServiceTests
     private static MediaRouter Router(FloorHolders holders) =>
         new(new FakeForceTreeProvider(BuildRouting()), new FakeFloorHolders(holders), new PriorityOverrideMixPolicy());
 
+    // No degrade profiles set, so the renderer is a pure pass-through (bytes forwarded unchanged).
+    private static MixRenderer PassThroughRenderer() =>
+        new(new FakeOpusDecoderFactory(), new FakeOpusEncoderFactory(), new DegradeRegistry(), new ClarityProcessor(new Random(1)));
+
     [Fact]
     public async Task Forwards_a_holders_frame_to_each_listener()
     {
@@ -22,7 +27,7 @@ public sealed class MediaRouterServiceTests
         FloorHolders holders = FloorHolders.From([new MixSource(Participant(P1), Net(A1a), new Priority(20))]);
         var payload = new byte[] { 1, 2, 3 };
         var bus = new ScriptedAudioBus([new AudioFrame(P1, payload)]);
-        var service = new MediaRouterService(bus, Router(holders), NullLogger<MediaRouterService>.Instance);
+        var service = new MediaRouterService(bus, Router(holders), PassThroughRenderer(), NullLogger<MediaRouterService>.Instance);
 
         await service.StartAsync(Ct);
         try
@@ -46,7 +51,7 @@ public sealed class MediaRouterServiceTests
         // The group leader holds the net; p2 (no floor) transmitting reaches nobody.
         FloorHolders holders = FloorHolders.From([new MixSource(Participant(A1a), Net(A1a), new Priority(40))]);
         var bus = new ScriptedAudioBus([new AudioFrame(P2, [9])]);
-        var service = new MediaRouterService(bus, Router(holders), NullLogger<MediaRouterService>.Instance);
+        var service = new MediaRouterService(bus, Router(holders), PassThroughRenderer(), NullLogger<MediaRouterService>.Instance);
 
         await service.StartAsync(Ct);
         try

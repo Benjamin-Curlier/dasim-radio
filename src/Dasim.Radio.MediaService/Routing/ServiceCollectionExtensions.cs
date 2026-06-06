@@ -1,4 +1,6 @@
+using Dasim.Radio.Audio.Opus;
 using Dasim.Radio.Core;
+using Dasim.Radio.MediaService.Degrade;
 using Dasim.Radio.MediaService.Floor;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -34,6 +36,15 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<IFloorHolders, FloorControlHolders>();
         services.TryAddSingleton<MediaRouter>();
+
+        // Per-listener degradation: native-libopus codec, the cmd.degrade registry + host, the clarity
+        // DSP, and the renderer that decodes → degrades → re-encodes (and passes undegraded through).
+        services.AddOpusSharpCodec();
+        services.TryAddSingleton<IDegradeRegistry, DegradeRegistry>();
+        services.AddHostedService<DegradeCommandService>();
+        services.TryAddSingleton<ClarityProcessor>();
+        services.TryAddSingleton<MixRenderer>();
+
         services.AddHostedService<MediaRouterService>();
 
         return services;
