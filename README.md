@@ -4,9 +4,11 @@ A LAN-based, cross-platform (Linux + Windows) voice radio stack that mirrors a m
 chain of command. Push-to-talk respects the hierarchy: a superior pre-empts (cuts off) a
 subordinate on the same net, and a member can talk both up and down the tree.
 
-> Status: **Phase 1 — foundation**. Core domain (floor control + force tree), shared
-> contracts, CI and project conventions are in place. Hosts (client, agent, manager,
-> media service) come in Phase 2. See [docs/architecture.md](docs/architecture.md).
+> Status: **Phase 2 — in progress.** Foundation (floor control + force tree, contracts, CI) plus
+> the messaging layer, the Opus codec seam (Concentus + native libopus), and the **media service**
+> (floor authority + per-listener routing, mix, and degradation) are in place. Remaining hosts —
+> agent, client (Avalonia), manager (Blazor) — are next. See
+> [docs/architecture.md](docs/architecture.md) and [docs/routing-mix-model.md](docs/routing-mix-model.md).
 
 ## Architecture at a glance
 
@@ -35,13 +37,18 @@ degradation before delivering each client its own stream.
 
 ```
 src/
-  Dasim.Radio.Core        Domain: force tree + floor-control state machine (the crown jewel)
-  Dasim.Radio.Contracts   NATS subjects + wire DTOs (primitives only)
-tests/
-  Dasim.Radio.Core.Tests  Unit tests for the domain
-docs/architecture.md      Architecture + decision log
-Directory.Build.props     Shared build settings (nullable, analyzers, warnings-as-errors)
-Directory.Packages.props  Central Package Management (all NuGet versions)
+  Dasim.Radio.Core            Domain: force tree, floor control, net topology, mix planner
+  Dasim.Radio.Contracts       NATS subjects + wire DTOs (primitives only)
+  Dasim.Radio.Messaging       NATS.Net wrappers (audio bus, KV store, floor/presence/degrade)
+  Dasim.Radio.Audio           Codec + audio I/O abstraction (IOpusEncoder/Decoder)
+  Dasim.Radio.Audio.Concentus Managed-Opus impl (client)
+  Dasim.Radio.Audio.Opus      Native-libopus (OpusSharp) impl (media service)
+  Dasim.Radio.MediaService    The authority host: floor + per-listener routing/mix/degrade
+tests/                        Core · Integration (Testcontainers) · Audio · Audio.Opus · MediaService
+benchmarks/                   BenchmarkDotNet (Opus encode throughput)
+docs/                         architecture.md · routing-mix-model.md · tech-stack.md · phase2-kickoff.md
+Directory.Build.props         Shared build settings (nullable, analyzers, warnings-as-errors)
+Directory.Packages.props      Central Package Management (all NuGet versions)
 ```
 
 ## Prerequisites

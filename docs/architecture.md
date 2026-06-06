@@ -1,7 +1,10 @@
 # Architecture
 
-> **Status: frozen for v1 (2026-06-04).** The design below is locked. Phase-2 library
-> versions are pinned in `Directory.Packages.props` after verification.
+> **Status: frozen for v1 (2026-06-04); Phase-2 implementation in progress.** The core design
+> below is locked and has held up in implementation. Decisions taken while building Phase 2 are
+> appended to the decision log (D8+) and the routing/mix design is detailed in
+> [routing-mix-model.md](routing-mix-model.md). Phase-2 library versions are pinned in
+> `Directory.Packages.props` after verification.
 
 ## 1. Goal
 
@@ -69,8 +72,14 @@ decisions. `TimeProvider` is injected (no `DateTime.Now`) for deterministic test
 ## 5. Security (military context, even on a LAN)
 
 - NATS **TLS** + decentralized auth (NKeys/JWT, operator/account model).
-- Map the hierarchy onto **NATS subject permissions**: a member cannot subscribe to nets
-  above their clearance — authorization enforced at the broker, not only in the client.
+- Map the hierarchy onto **NATS subject permissions** — authorization at the broker, not only
+  in the client.
+- **Refinement (Phase 2):** the audio plane turned out to be **per-client**
+  (`audio.in/out.<clientId>`), not per-net, so "a member cannot hear nets above their clearance"
+  is enforced **server-side in the media-service router** (membership + the force-tree priority
+  resolver), not by per-net audio subjects. NATS subject perms isolate each client to its own
+  `audio.in/out.<self>` and govern who may publish `floor.request`/`floor.release`. Folded into
+  the NATS-security work (issue #11).
 
 ## 6. Decision log
 
@@ -83,11 +92,22 @@ decisions. `TimeProvider` is injected (no `DateTime.Now`) for deterministic test
 | D5 | **Avalonia** for the client | Native audio + global PTT hotkeys; webview (Photino) does not solve the hard 80%. Blazor kept for the manager. |
 | D6 | Codec split: **Concentus** (client), **native libopus** (media service) | Managed Concentus keeps the Avalonia client free of native deps (simple Linux packaging). The media service does the heavy per-listener encoding, so it uses native libopus for throughput. Both sit behind the `Dasim.Radio.Audio` abstraction. |
 | D7 | NATS is the single fabric | No second broker. A media service is a NATS *client*, not a replacement. "Scalable audio service" is premature at 50 pax. |
+| D8 | **Subtree nets** (one net per non-leaf node = node + direct children; net id = node id) | Resolves "derive nets from the force tree". A leader sits on its own net (talk down) + its parent's (talk up); drops onto the per-net floor unchanged. Detail: [routing-mix-model.md](routing-mix-model.md). |
+| D9 | **Combine policy is a strategy** (`IMixPolicy`: `PriorityOverride` default, `Additive`) | Membership + floor are identical; only the final combine differs. Selectable per deployment (`Routing:CombinePolicy`). Strict floor ⇒ a listener mixes ≤ (their nets) ≈ 2 sources, so the bottleneck is encode fan-out, not mixing. |
+| D10 | **Transmit = net-select** (one net per PTT; default own net, modifier parent net) | Matches a real radio channel selector; already expressible in `FloorRequestMessage`. |
+| D11 | **Priority from the force tree, never the wire** (`ForceTreePriorityResolver`) | Closes a rank-spoofing gap: a client cannot inflate its priority to pre-empt a superior. Unknown participant → lowest priority. |
 
 ## 7. Open items for Phase 2
 
-- `Dasim.Radio.Messaging` (NATS.Net wrappers: KV/Services/core), `Dasim.Radio.Audio`
-  (capture/playback/codec abstraction), the four hosts, and `Dasim.Radio.Integration.Tests`
-  (Testcontainers NATS).
-- Derive nets and per-participant priority from the force tree.
-- Per-listener encode sharing (group listeners by net-set + degradation profile).
+Resolved:
+- ~~`Dasim.Radio.Messaging`, `Dasim.Radio.Audio`, `Dasim.Radio.Integration.Tests`~~ — done.
+- ~~Derive nets and per-participant priority from the force tree~~ — D8/D11; see
+  [routing-mix-model.md](routing-mix-model.md).
+
+Still open:
+- Per-listener **encode sharing** (group listeners by net-set + degradation profile) — deferred to
+  a *measured* perf pass (BenchmarkDotNet first); strict floor keeps real fan-out low, so measure
+  before optimising.
+- Remaining hosts: `Dasim.Radio.Agent`, `Dasim.Radio.Client` (Avalonia), `Dasim.Radio.Manager`
+  (Blazor); device I/O (`OwnAudioSharp`).
+- NATS security hardening (TLS + NKey/JWT + the per-client subject-permission model above) — issue #11.
