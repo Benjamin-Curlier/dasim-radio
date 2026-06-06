@@ -31,10 +31,19 @@ public sealed class NatsContainerFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        // Fast pre-check: on a runner without a Docker daemon (e.g. windows-latest) the Docker client's
-        // connect can HANG well past StartupTimeout (the token isn't honored during the socket/pipe
-        // connect), which is why the whole job timed out. Probing the endpoint first lets such a host
-        // skip in milliseconds instead.
+        // Skip on Windows outright. The Windows runner ships Docker but in Windows-container mode, so the
+        // docker_engine pipe exists yet starting the Linux nats image HANGS past StartupTimeout (the token
+        // isn't honored during connect) — that's what timed the whole job out. These tests validate the
+        // (platform-agnostic) NATS messaging round-trips and are fully exercised on the Linux CI leg.
+        if (OperatingSystem.IsWindows())
+        {
+            Available = false;
+            SkipReason = "Integration tests need a Linux Docker daemon; skipped on Windows.";
+            return;
+        }
+
+        // On Linux/macOS, still skip fast if there's no Docker endpoint at all (a dev box without Docker)
+        // rather than waiting out the container-start timeout.
         if (!DockerEndpointPresent())
         {
             Available = false;
@@ -59,30 +68,12 @@ public sealed class NatsContainerFixture : IAsyncLifetime
         }
     }
 
-    // Best-effort, fast check for a local Docker daemon, so the container start is only attempted when
-    // one is likely present. Honors DOCKER_HOST; otherwise looks for the conventional socket/named pipe.
-    private static bool DockerEndpointPresent()
-    {
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOCKER_HOST")))
-        {
-            return true;
-        }
-
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                return Directory.EnumerateFiles(@"\\.\pipe\")
-                    .Any(pipe => pipe.Contains("docker_engine", StringComparison.OrdinalIgnoreCase));
-            }
-            catch (IOException)
-            {
-                return false;
-            }
-        }
-
-        return File.Exists("/var/run/docker.sock");
-    }
+    // Best-effort, fast check for a local Docker daemon on Linux/macOS (Windows is already handled above),
+    // so the container start is only attempted when one is likely present. Honors DOCKER_HOST; otherwise
+    // looks for the conventional Unix socket.
+    private static bool DockerEndpointPresent() =>
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOCKER_HOST"))
+        || File.Exists("/var/run/docker.sock");
 
     public async ValueTask DisposeAsync()
     {
