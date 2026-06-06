@@ -8,6 +8,7 @@
     <Project Path="src/Dasim.Radio.Agent/Dasim.Radio.Agent.csproj" />
     <Project Path="src/Dasim.Radio.Audio/Dasim.Radio.Audio.csproj" />
     <Project Path="src/Dasim.Radio.Client/Dasim.Radio.Client.csproj" />
+    <Project Path="src/Dasim.Radio.Client.Ptt/Dasim.Radio.Client.Ptt.csproj" />
     <Project Path="src/Dasim.Radio.Contracts/Dasim.Radio.Contracts.csproj" />
     <Project Path="src/Dasim.Radio.Core/Dasim.Radio.Core.csproj" />
     <Project Path="src/Dasim.Radio.Manager.Core/Dasim.Radio.Manager.Core.csproj" />
