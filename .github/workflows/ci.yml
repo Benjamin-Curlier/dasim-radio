@@ -33,8 +33,14 @@ jobs:
         run: dotnet restore Dasim.Radio.slnx
       - name: Build
         run: dotnet build Dasim.Radio.slnx -c Release --no-restore
-      - name: Test
-        run: dotnet test Dasim.Radio.slnx -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+      # Unit tests run on both OSes. The Testcontainers/NATS integration tests need a Linux Docker
+      # daemon, which the Windows runner lacks — there they intermittently hang the whole run — so they
+      # run on Linux only, below.
+      - name: Test (unit)
+        run: dotnet test Dasim.Radio.slnx -c Release --no-build --filter "FullyQualifiedName!~Integration" --logger "trx;LogFileName=test-results.trx"
+      - name: Test (integration, Linux only)
+        if: runner.os == 'Linux'
+        run: dotnet test tests/Dasim.Radio.Integration.Tests/Dasim.Radio.Integration.Tests.csproj -c Release --no-build --logger "trx;LogFileName=integration-results.trx"
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
