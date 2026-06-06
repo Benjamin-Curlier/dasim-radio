@@ -65,8 +65,10 @@ gh pr merge --squash --delete-branch
 Issues are tracked on GitHub under the **`phase:2`** label:
 <https://github.com/Benjamin-Curlier/dasim-radio/issues?q=is%3Aissue+label%3Aphase%3A2>
 
-> **Next up: item 5 (Client) / 6 (Manager).** Items 1–4 are ✅ done (see "Where we are"). Before the
-> client (item 5), spike the **Wayland PTT** risk (issue #12) — that spike is the immediate next task.
+> **Next up: item 5 (Client) / 6 (Manager).** Items 1–4 are ✅ done (see "Where we are"). The
+> **Wayland PTT** spike (issue #12) is ✅ done — see [wayland-ptt-spike.md](wayland-ptt-spike.md);
+> the client builds the decided `IPushToTalkHotkey` seam: SharpHook on Windows, **evdev** on Linux
+> (covers X11 + Wayland in one), on-screen fallback; GlobalShortcuts portal as a post-v1 fast-follow.
 
 1. ✅ **DONE — `Dasim.Radio.Messaging`** + `tests/Dasim.Radio.Integration.Tests`
    - `dotnet add` : `NATS.Net` (core/JetStream/KV/Services). Tests: `Testcontainers`.
@@ -97,18 +99,22 @@ Issues are tracked on GitHub under the **`phase:2`** label:
    placeholder until the client reports its real audio id. Reviewed with the **dotnet code-reviewer**
    agent (the floor/audio domain reviewers don't apply — no `Contracts`/hot-path change).
 
-5. **`feature/client` → `Dasim.Radio.Client`** — Avalonia: device selection + **global PTT via
-   SharpHook**.
-   - ⚠️ **Spike the Wayland/X11 risk FIRST** (libuiohook is X11-only; unfocused hotkey fails on
-     Wayland). See the dedicated spike issue. Decide: require Xorg, detect `XDG_SESSION_TYPE`,
-     or accept focused-only on Wayland.
+5. **`feature/client` → `Dasim.Radio.Client`** — Avalonia: device selection + **global PTT**.
+   - ✅ **Wayland/X11 PTT spike done** — see [wayland-ptt-spike.md](wayland-ptt-spike.md). Build an
+     `IPushToTalkHotkey` seam with one provider per OS: **SharpHook on Windows**, **evdev on Linux**
+     (one mechanism for X11 + Wayland — no session-type branching), plus an **on-screen PTT**
+     fallback when input access isn't granted. Avalonia's own `HotKey` is focused-only, so PTT lives
+     outside the toolkit. The GlobalShortcuts portal (permission-free, GNOME 48+/KDE 6+) is a post-v1
+     fast-follow behind the same seam.
 
 6. **`feature/manager` → `Dasim.Radio.Manager`** — Blazor: config CRUD, force-tree import from
    NATS KV, post discovery, launch/stop, degrade commands.
 
 ## Open risks to keep validating
 
-- **Wayland breaks the global PTT** (item 5) — spike before building the client UI.
+- **Wayland breaks the global PTT** (item 5) — ✅ spiked & decided: **evdev** on Linux (works on X11
+  + Wayland), SharpHook on Windows, on-screen fallback; portal post-v1. See
+  [wayland-ptt-spike.md](wayland-ptt-spike.md).
 - **Native libopus glibc baseline** — if ever hand-building, match the deployment baseline.
 - **Per-listener encode cost** — measured (perf pass); profile encode-sharing + complexity-5 cap
   landed. Validate again on the real deployment CPU with live (continuously-varying) voice.
