@@ -22,4 +22,5 @@ namespace Dasim.Radio.Messaging.Serialization;
 [JsonSerializable(typeof(ForceNodeDto))]
 [JsonSerializable(typeof(EndpointDto))]
 [JsonSerializable(typeof(FloorStateDto))]
+[JsonSerializable(typeof(ClientConfigDto))]
 public sealed partial class RadioJsonContext : JsonSerializerContext;

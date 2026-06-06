@@ -10,6 +10,7 @@
     <Project Path="src/Dasim.Radio.Client/Dasim.Radio.Client.csproj" />
     <Project Path="src/Dasim.Radio.Contracts/Dasim.Radio.Contracts.csproj" />
     <Project Path="src/Dasim.Radio.Core/Dasim.Radio.Core.csproj" />
+    <Project Path="src/Dasim.Radio.Manager.Core/Dasim.Radio.Manager.Core.csproj" />
     <Project Path="src/Dasim.Radio.MediaService/Dasim.Radio.MediaService.csproj" />
     <Project Path="src/Dasim.Radio.Messaging/Dasim.Radio.Messaging.csproj" />
   </Folder>
@@ -20,6 +21,7 @@
     <Project Path="tests/Dasim.Radio.Audio.Tests/Dasim.Radio.Audio.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Core.Tests/Dasim.Radio.Core.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Integration.Tests/Dasim.Radio.Integration.Tests.csproj" />
+    <Project Path="tests/Dasim.Radio.Manager.Core.Tests/Dasim.Radio.Manager.Core.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.MediaService.Tests/Dasim.Radio.MediaService.Tests.csproj" />
   </Folder>
 </Solution>

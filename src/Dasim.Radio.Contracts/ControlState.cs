@@ -23,6 +23,21 @@ public sealed record ForceTreeDto(int Version, ForceNodeDto Root);
 public sealed record EndpointDto(string PostId, string HostName, string IpAddress);
 
 /// <summary>
+/// A client launch configuration as stored in the <c>configs</c> bucket (keyed by <see cref="ConfigId"/>).
+/// The manager authors these; an agent's <c>launch(configId)</c> resolves one and the client boots from it.
+/// Deliberately omits priority (the force tree is authoritative — see <c>ForceTreePriorityResolver</c>) and
+/// device/codec preferences (those are local, per-machine concerns, and Contracts must not reference Audio).
+/// </summary>
+public sealed record ClientConfigDto(
+    string ConfigId,
+    string ClientId,
+    string ParticipantId,
+    string OwnNetId,
+    string? ParentNetId,
+    string DisplayName,
+    string? HostId = null);
+
+/// <summary>
 /// Authoritative floor holder for one net, as stored in the <c>floor_state</c> bucket.
 /// A null <see cref="HolderParticipantId"/> means the net is idle.
 /// </summary>
