@@ -125,4 +125,26 @@ public sealed class FloorControlServiceTests
 
         Assert.Equal(_clock.GetUtcNow(), _sut.GetSnapshot(Net).HeldSince);
     }
+
+    [Fact]
+    public void ActiveFloors_is_empty_when_no_net_is_held()
+    {
+        Assert.Empty(_sut.ActiveFloors());
+    }
+
+    [Fact]
+    public void ActiveFloors_lists_only_held_nets()
+    {
+        var netA = new NetId("net-a");
+        var netB = new NetId("net-b");
+        _sut.RequestFloor(netA, new ParticipantId("x"), new Priority(2));
+        _sut.RequestFloor(netB, new ParticipantId("y"), new Priority(3));
+        _sut.ReleaseFloor(netB, new ParticipantId("y"));
+
+        FloorSnapshot held = Assert.Single(_sut.ActiveFloors());
+
+        Assert.Equal(netA, held.Net);
+        Assert.Equal(new ParticipantId("x"), held.Holder);
+        Assert.Equal(new Priority(2), held.HolderPriority);
+    }
 }

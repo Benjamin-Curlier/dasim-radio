@@ -1,4 +1,5 @@
 using Dasim.Radio.MediaService.Floor;
+using Dasim.Radio.MediaService.Routing;
 using Dasim.Radio.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,5 +26,28 @@ public sealed class CompositionTests
 
         Assert.NotNull(provider.GetRequiredService<FloorArbiter>());
         Assert.Contains(provider.GetServices<IHostedService>(), service => service is FloorAuthorityService);
+    }
+
+    [Fact]
+    public async Task Composition_root_resolves_media_routing_with_force_tree_priority()
+    {
+        // Full Program.cs composition. AddMediaRouting must replace the interim floor priority resolver
+        // and contribute the force-tree provider + media-router hosts.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDasimRadioMessaging("nats://localhost:4222");
+        services.AddFloorAuthority();
+        services.AddMediaRouting();
+
+        await using ServiceProvider provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+
+        Assert.NotNull(provider.GetRequiredService<MediaRouter>());
+        // The authoritative resolver has replaced the interim client-trusting one.
+        Assert.IsType<ForceTreePriorityResolver>(provider.GetRequiredService<IFloorPriorityResolver>());
+
+        IHostedService[] hosted = [.. provider.GetServices<IHostedService>()];
+        Assert.Contains(hosted, service => service is ForceTreeProvider);
+        Assert.Contains(hosted, service => service is MediaRouterService);
     }
 }

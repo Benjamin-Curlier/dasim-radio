@@ -42,6 +42,11 @@ public sealed class NetTopology
         _membership = membership;
     }
 
+    /// <summary>An empty topology (no nets) — a host's state before any force tree has been imported.</summary>
+    public static NetTopology Empty { get; } = new(
+        new Dictionary<NetId, IReadOnlyList<ParticipantId>>(),
+        new Dictionary<ParticipantId, NetMembership>());
+
     /// <summary>Every net in the topology (one per non-leaf node).</summary>
     public IReadOnlyCollection<NetId> Nets => (IReadOnlyCollection<NetId>)_members.Keys;
 

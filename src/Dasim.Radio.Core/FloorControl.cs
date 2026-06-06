@@ -64,6 +64,25 @@ public sealed class FloorControlService
     /// <summary>Returns the current state of a net's floor.</summary>
     public FloorSnapshot GetSnapshot(NetId net) => GetFloor(net).Snapshot();
 
+    /// <summary>
+    /// Snapshots every net that currently holds a floor (idle nets are omitted). The media service's
+    /// router uses this to learn which speakers are live this instant without round-tripping NATS.
+    /// </summary>
+    public IReadOnlyList<FloorSnapshot> ActiveFloors()
+    {
+        var held = new List<FloorSnapshot>();
+        foreach (NetFloor floor in _nets.Values)
+        {
+            FloorSnapshot snapshot = floor.Snapshot();
+            if (snapshot.Status == FloorStatus.Held)
+            {
+                held.Add(snapshot);
+            }
+        }
+
+        return held;
+    }
+
     private NetFloor GetFloor(NetId net) => _nets.GetOrAdd(net, static n => new NetFloor(n));
 
     private sealed class NetFloor(NetId net)

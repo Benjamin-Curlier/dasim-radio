@@ -55,4 +55,11 @@ public static class Subjects
         public const string Presence = "presence";
         public const string FloorState = "floor_state";
     }
+
+    /// <summary>Well-known keys within the KV buckets.</summary>
+    public static class Keys
+    {
+        /// <summary>The single key in the <c>force_tree</c> bucket holding the authoritative tree.</summary>
+        public const string ForceTreeCurrent = "current";
+    }
 }

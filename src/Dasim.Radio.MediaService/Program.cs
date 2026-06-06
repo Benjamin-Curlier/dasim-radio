@@ -1,4 +1,5 @@
 using Dasim.Radio.MediaService.Floor;
+using Dasim.Radio.MediaService.Routing;
 using Dasim.Radio.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -9,6 +10,7 @@ string natsUrl = builder.Configuration.GetValue<string>("Nats:Url") ?? "nats://s
 
 builder.Services.AddDasimRadioMessaging(natsUrl);
 builder.Services.AddFloorAuthority();
+builder.Services.AddMediaRouting();
 
 IHost host = builder.Build();
 host.Run();
