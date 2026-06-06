@@ -77,14 +77,19 @@ public sealed class MediaRouterService : BackgroundService
         }
 
         var speaker = new ParticipantId(frame.ClientId);
-        IReadOnlyList<ParticipantId> recipients = _router.Recipients(speaker);
-        if (recipients.Count == 0)
+
+        // Buffer this speaker's frame first (a non-trigger source contributes only as a buffered peer),
+        // then emit the mixes this frame triggers: pass-through for an undegraded single source, or
+        // decode → sum → degrade → re-encode for a multi-source or degraded listener.
+        _renderer.Remember(speaker, frame.Opus);
+
+        IReadOnlyList<MixDelivery> deliveries = _router.Deliveries(speaker);
+        if (deliveries.Count == 0)
         {
             return;
         }
 
-        // Pass-through for undegraded listeners, decode → degrade → re-encode for the rest.
-        foreach (RenderedFrame rendered in _renderer.Render(speaker, frame.Opus, recipients))
+        foreach (RenderedFrame rendered in _renderer.Render(deliveries))
         {
             await _audioBus.PublishMixedAsync(rendered.Listener.Value, rendered.Opus, cancellationToken)
                 .ConfigureAwait(false);

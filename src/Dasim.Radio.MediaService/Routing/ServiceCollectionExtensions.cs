@@ -7,23 +7,40 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Dasim.Radio.MediaService.Routing;
 
+/// <summary>How a listener's concurrently-active nets are combined into their mix.</summary>
+public enum MixCombinePolicy
+{
+    /// <summary>A superior cuts through: the listener hears only the highest-priority active net.</summary>
+    Override,
+
+    /// <summary>The listener hears every active net they are on, summed together.</summary>
+    Additive,
+}
+
 /// <summary>DI registration for the media service's data-plane routing.</summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the per-listener routing: the force-tree provider (kept in step with the
-    /// <c>force_tree</c> bucket), the combine policy, the floor-holder source, and the media-router
-    /// host. Also REPLACES the interim client-trusting floor priority resolver with the authoritative
-    /// force-tree one, so call this after <c>AddFloorAuthority</c> (which it depends on for
-    /// <see cref="FloorControlService"/>) and after <c>AddDasimRadioMessaging</c>.
+    /// <c>force_tree</c> bucket), the chosen combine policy, the floor-holder source, the codec +
+    /// degradation pipeline, and the media-router host. Also REPLACES the interim client-trusting floor
+    /// priority resolver with the authoritative force-tree one, so call this after
+    /// <c>AddFloorAuthority</c> (which it depends on for <see cref="FloorControlService"/>) and after
+    /// <c>AddDasimRadioMessaging</c>.
     /// </summary>
-    public static IServiceCollection AddMediaRouting(this IServiceCollection services)
+    public static IServiceCollection AddMediaRouting(
+        this IServiceCollection services, MixCombinePolicy combinePolicy = MixCombinePolicy.Override)
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Default combine policy: a superior cuts through. Swap to AdditiveMixPolicy to sum every
-        // active net the listener is on instead.
-        services.TryAddSingleton<IMixPolicy, PriorityOverrideMixPolicy>();
+        if (combinePolicy == MixCombinePolicy.Additive)
+        {
+            services.TryAddSingleton<IMixPolicy, AdditiveMixPolicy>();
+        }
+        else
+        {
+            services.TryAddSingleton<IMixPolicy, PriorityOverrideMixPolicy>();
+        }
 
         services.TryAddSingleton<ForceTreeProvider>();
         services.TryAddSingleton<IForceTreeProvider>(sp => sp.GetRequiredService<ForceTreeProvider>());

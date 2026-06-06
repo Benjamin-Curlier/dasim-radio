@@ -3,12 +3,19 @@ using Dasim.Radio.Core;
 namespace Dasim.Radio.MediaService.Routing;
 
 /// <summary>
-/// Decides where a captured frame goes. Given the speaker of a frame, it returns the listeners that
-/// should receive it: the members of every net the speaker currently holds whose mix (per the
-/// <see cref="IMixPolicy"/>) actually resolves to that speaker. Under the priority-override policy a
-/// listener resolves to a single source, so forwarding the speaker's frame to each recipient is a
-/// zero-transcode pass-through — the common case. (Summing two sources for the additive policy and
-/// per-listener degradation are later slices; this router forwards bytes only.)
+/// What one listener should be sent when their trigger source produces a frame: the listener and the
+/// full set of sources to combine for them (one source under the override policy, possibly several
+/// under additive).
+/// </summary>
+public readonly record struct MixDelivery(ParticipantId Listener, IReadOnlyList<MixSource> Sources);
+
+/// <summary>
+/// Decides, for a captured frame from one speaker, which listeners' mixes that frame should drive.
+/// A listener's mix is emitted exactly once per cycle — on the arrival of its <em>trigger</em> (the
+/// highest-priority source in its plan) — so a multi-source additive listener is not emitted twice.
+/// A frame from a non-trigger source updates that source's buffer (in the renderer) but drives no
+/// output here. Under the override policy every plan has a single source, which is its own trigger, so
+/// this reduces to "the listeners who currently hear this speaker".
 /// </summary>
 public sealed class MediaRouter
 {
@@ -23,11 +30,8 @@ public sealed class MediaRouter
         _policy = policy ?? throw new ArgumentNullException(nameof(policy));
     }
 
-    /// <summary>
-    /// The listeners that should receive <paramref name="speaker"/>'s current frame. Empty when the
-    /// speaker holds no net (no floor) or every member is hearing a higher net instead.
-    /// </summary>
-    public IReadOnlyList<ParticipantId> Recipients(ParticipantId speaker)
+    /// <summary>The mixes that <paramref name="speaker"/>'s current frame should drive (empty if it holds no net).</summary>
+    public IReadOnlyList<MixDelivery> Deliveries(ParticipantId speaker)
     {
         ForceRouting routing = _force.Current;
         NetMembership membership = routing.Topology.MembershipOf(speaker);
@@ -38,7 +42,6 @@ public sealed class MediaRouter
 
         FloorHolders holders = _holders.Current();
 
-        // The net(s) this speaker actually holds — net-select PTT means usually one.
         List<NetId>? heldNets = null;
         foreach (NetId net in membership.Nets)
         {
@@ -50,11 +53,11 @@ public sealed class MediaRouter
 
         if (heldNets is null)
         {
-            // The speaker is transmitting without the floor (denied or released) — drop it.
+            // The speaker is transmitting without the floor (denied or released) — drives nothing.
             return [];
         }
 
-        var recipients = new List<ParticipantId>();
+        var deliveries = new List<MixDelivery>();
         var seen = new HashSet<ParticipantId>();
         foreach (NetId net in heldNets)
         {
@@ -66,26 +69,20 @@ public sealed class MediaRouter
                 }
 
                 MixPlan plan = routing.Planner.PlanFor(listener, holders, _policy);
-                if (Hears(plan, speaker))
+                if (plan.Sources.Count == 0)
                 {
-                    recipients.Add(listener);
+                    continue;
+                }
+
+                // Emit this listener's mix only when the frame is from their trigger source, so a
+                // multi-source listener is driven once per cycle (by their highest-priority source).
+                if (MixSources.Highest(plan.Sources).Speaker == speaker)
+                {
+                    deliveries.Add(new MixDelivery(listener, plan.Sources));
                 }
             }
         }
 
-        return recipients;
-    }
-
-    private static bool Hears(MixPlan plan, ParticipantId speaker)
-    {
-        foreach (MixSource source in plan.Sources)
-        {
-            if (source.Speaker == speaker)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return deliveries;
     }
 }

@@ -1,3 +1,4 @@
+using Dasim.Radio.Core;
 using Dasim.Radio.MediaService.Degrade;
 using Dasim.Radio.MediaService.Floor;
 using Dasim.Radio.MediaService.Routing;
@@ -52,5 +53,22 @@ public sealed class CompositionTests
         Assert.Contains(hosted, service => service is ForceTreeProvider);
         Assert.Contains(hosted, service => service is MediaRouterService);
         Assert.Contains(hosted, service => service is DegradeCommandService);
+        // Default combine policy is override.
+        Assert.IsType<PriorityOverrideMixPolicy>(provider.GetRequiredService<IMixPolicy>());
+    }
+
+    [Fact]
+    public async Task Media_routing_can_be_composed_with_the_additive_policy()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDasimRadioMessaging("nats://localhost:4222");
+        services.AddFloorAuthority();
+        services.AddMediaRouting(MixCombinePolicy.Additive);
+
+        await using ServiceProvider provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+
+        Assert.IsType<AdditiveMixPolicy>(provider.GetRequiredService<IMixPolicy>());
     }
 }

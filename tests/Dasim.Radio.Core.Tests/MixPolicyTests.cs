@@ -55,4 +55,26 @@ public sealed class MixPolicyTests
     {
         Assert.Empty(new PriorityOverrideMixPolicy().Select([]));
     }
+
+    [Fact]
+    public void Highest_returns_the_top_priority_source()
+    {
+        var sources = new List<MixSource> { Source("a", 10), Source("b", 30), Source("c", 20) };
+
+        Assert.Equal("b", MixSources.Highest(sources).Speaker.Value);
+    }
+
+    [Fact]
+    public void Highest_breaks_ties_on_the_speaker_id()
+    {
+        var sources = new List<MixSource> { Source("zulu", 50), Source("alpha", 50) };
+
+        Assert.Equal("alpha", MixSources.Highest(sources).Speaker.Value);
+    }
+
+    [Fact]
+    public void Highest_throws_on_an_empty_set()
+    {
+        Assert.Throws<ArgumentException>(() => MixSources.Highest([]));
+    }
 }
