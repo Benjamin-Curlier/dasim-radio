@@ -65,10 +65,13 @@ gh pr merge --squash --delete-branch
 Issues are tracked on GitHub under the **`phase:2`** label:
 <https://github.com/Benjamin-Curlier/dasim-radio/issues?q=is%3Aissue+label%3Aphase%3A2>
 
-> **Next up: item 5 (Client) / 6 (Manager).** Items 1–4 are ✅ done (see "Where we are"). The
-> **Wayland PTT** spike (issue #12) is ✅ done — see [wayland-ptt-spike.md](wayland-ptt-spike.md);
-> the client builds the decided `IPushToTalkHotkey` seam: SharpHook on Windows, **evdev** on Linux
-> (covers X11 + Wayland in one), on-screen fallback; GlobalShortcuts portal as a post-v1 fast-follow.
+> **✅ v1 is structurally complete — all work-order items (1–6) and the #12 spike are done.** Every
+> host exists: Messaging, Audio+codecs, MediaService, Agent, the full Client (engine + PTT + OwnAudio +
+> Avalonia app), and the Manager (core + Blazor UI). **The UI/device/PTT layers (Avalonia app,
+> OwnAudioSharp, SharpHook/evdev, Blazor UI) are build-only and CI-green but UNVERIFIED on real
+> hardware/display — validate them per each PR's manual-test checklist before tagging a release.**
+> Post-v1 backlog (open issues): #11 NATS security, #24 per-net degrade scoping, #27 drop-stale-audio,
+> #34 ForceTreeMapper null-children guard.
 
 1. ✅ **DONE — `Dasim.Radio.Messaging`** + `tests/Dasim.Radio.Integration.Tests`
    - `dotnet add` : `NATS.Net` (core/JetStream/KV/Services). Tests: `Testcontainers`.
@@ -99,16 +102,17 @@ Issues are tracked on GitHub under the **`phase:2`** label:
    placeholder until the client reports its real audio id. Reviewed with the **dotnet code-reviewer**
    agent (the floor/audio domain reviewers don't apply — no `Contracts`/hot-path change).
 
-5. **`feature/client` → `Dasim.Radio.Client`** — Avalonia: device selection + **global PTT**.
-   - ✅ **Wayland/X11 PTT spike done** — see [wayland-ptt-spike.md](wayland-ptt-spike.md). Build an
-     `IPushToTalkHotkey` seam with one provider per OS: **SharpHook on Windows**, **evdev on Linux**
-     (one mechanism for X11 + Wayland — no session-type branching), plus an **on-screen PTT**
-     fallback when input access isn't granted. Avalonia's own `HotKey` is focused-only, so PTT lives
-     outside the toolkit. The GlobalShortcuts portal (permission-free, GNOME 48+/KDE 6+) is a post-v1
-     fast-follow behind the same seam.
+5. ✅ **DONE — `Dasim.Radio.Client`** (issue #9, PRs #32/#36/#37/#38/#40/#41/#42) — built in slices:
+   the headless engine (PTT/floor state machine + transmit/receive pumps, tested), the PTT input core
+   (session detect + evdev parse + key-edge, tested), the **build-only** native providers
+   (`SharpHookPushToTalk` Win/X11 + `EvdevPushToTalk` Linux), the audio conversion/reframing core
+   (tested) + **build-only** `OwnAudio` device adapter, `CompositePushToTalk` (tested), and the
+   **build-only** Avalonia app composing it all. PTT per the #12 decision; Avalonia's own `HotKey` is
+   focused-only so PTT lives outside the toolkit. GlobalShortcuts portal is a post-v1 fast-follow.
 
-6. **`feature/manager` → `Dasim.Radio.Manager`** — Blazor: config CRUD, force-tree import from
-   NATS KV, post discovery, launch/stop, degrade commands.
+6. ✅ **DONE — `Dasim.Radio.Manager`** (issue #10, PRs #33/#43) — the tested `Manager.Core` services
+   (config CRUD, force-tree import + validation, post directory/presence, post control, degrade) +
+   `ClientConfigDto`, behind a **build-only** Blazor Server UI (Posts/Configurations/Force-tree pages).
 
 ## Open risks to keep validating
 
