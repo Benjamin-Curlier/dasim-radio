@@ -1,0 +1,79 @@
+@page "/force-tree"
+@using System.Text.Json
+@using Dasim.Radio.Messaging.Serialization
+@inject IForceTreeService Trees
+
+<h1>Force tree</h1>
+
+@if (_error is not null) { <p style="color:#b91c1c;">@_error</p> }
+@if (_status is not null) { <p style="color:#15803d;">@_status</p> }
+
+<p>
+    Current version: <strong>@(_current?.Tree.Version.ToString() ?? "none")</strong>
+    <button @onclick="LoadAsync" style="margin-left:12px;">Refresh</button>
+</p>
+
+<h2>Import (JSON)</h2>
+<p style="opacity:.7;">Paste a force tree (ForceTreeDto) as JSON. It is validated before it replaces the current tree.</p>
+<textarea @bind="_json" rows="12" style="width:100%; font-family:monospace;"></textarea>
+<p><button @onclick="ImportAsync">Import</button></p>
+
+@code {
+    private ForceTreeImport? _current;
+    private string _json = string.Empty;
+    private string? _error;
+    private string? _status;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _error = null;
+            _current = await Trees.GetCurrentAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        _error = null;
+        _status = null;
+
+        ForceTreeDto? tree;
+        try
+        {
+            tree = JsonSerializer.Deserialize(_json, RadioJsonContext.Default.ForceTreeDto);
+        }
+        catch (JsonException ex)
+        {
+            _error = $"Invalid JSON: {ex.Message}";
+            return;
+        }
+
+        if (tree is null)
+        {
+            _error = "The pasted JSON did not produce a force tree.";
+            return;
+        }
+
+        try
+        {
+            await Trees.ImportAsync(tree);
+            _status = $"Imported version {tree.Version}.";
+            await LoadAsync();
+        }
+        catch (ForceTreeValidationException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

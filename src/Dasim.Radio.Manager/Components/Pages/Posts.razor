@@ -1,0 +1,125 @@
+@page "/"
+@inject IPostDirectoryService Directory
+@inject IPostControlService Control
+@inject IDegradeControlService Degrade
+
+<h1>Posts</h1>
+
+<p>
+    <button @onclick="RefreshAsync">Refresh</button>
+    @if (_status is not null) { <span style="margin-left:12px;">@_status</span> }
+    @if (_error is not null) { <span style="margin-left:12px; color:#b91c1c;">@_error</span> }
+</p>
+
+@if (_posts is null)
+{
+    <p>Loading…</p>
+}
+else if (_posts.Count == 0)
+{
+    <p>No posts are currently online.</p>
+}
+else
+{
+    <table style="border-collapse:collapse; width:100%;">
+        <thead>
+            <tr style="text-align:left; border-bottom:1px solid #ddd;">
+                <th>Host</th><th>State</th><th>Client</th><th>Launch / stop</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (PostStatus post in _posts)
+            {
+                <tr style="border-bottom:1px solid #eee;">
+                    <td>@post.Heartbeat.HostName <span style="opacity:.6;">(@post.Heartbeat.HostId)</span></td>
+                    <td>@(post.IsStale ? "stale" : "online")</td>
+                    <td>@(post.Heartbeat.ClientId ?? "—")</td>
+                    <td>
+                        <input @bind="_configId" placeholder="config id" style="width:120px;" />
+                        <button @onclick="() => LaunchAsync(post.Heartbeat.HostId)">Launch</button>
+                        <button @onclick="() => StopAsync(post.Heartbeat.HostId)">Stop</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2 style="margin-top:24px;">Degrade a listener</h2>
+<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <input @bind="_degradeTarget" placeholder="client id" />
+    <label>Quality <input type="number" min="0" max="100" @bind="_quality" style="width:64px;" /></label>
+    <label>Clarity <input type="number" min="0" max="100" @bind="_clarity" style="width:64px;" /></label>
+    <button @onclick="DegradeAsync">Apply</button>
+    <button @onclick="ResetDegradeAsync">Reset</button>
+</div>
+
+@code {
+    private IReadOnlyList<PostStatus>? _posts;
+    private string? _error;
+    private string? _status;
+    private string _configId = string.Empty;
+    private string _degradeTarget = string.Empty;
+    private int _quality = 100;
+    private int _clarity = 100;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            _error = null;
+            _posts = await Directory.OnlinePostsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private Task LaunchAsync(string hostId) => CommandAsync(() => Control.LaunchAsync(hostId, _configId).AsTask());
+
+    private Task StopAsync(string hostId) => CommandAsync(() => Control.StopAsync(hostId).AsTask());
+
+    private async Task CommandAsync(Func<Task<AgentCommandResult>> command)
+    {
+        try
+        {
+            AgentCommandResult result = await command();
+            _status = result.Accepted ? "Command accepted." : $"Declined: {result.Error}";
+        }
+        catch (Exception ex)
+        {
+            _status = $"Error: {ex.Message}";
+        }
+
+        await RefreshAsync();
+    }
+
+    private async Task DegradeAsync()
+    {
+        try
+        {
+            await Degrade.DegradeAsync(_degradeTarget, _quality, _clarity);
+            _status = $"Degrade sent to '{_degradeTarget}'.";
+        }
+        catch (Exception ex)
+        {
+            _status = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task ResetDegradeAsync()
+    {
+        try
+        {
+            await Degrade.ResetAsync(_degradeTarget);
+            _status = $"Reset '{_degradeTarget}' to full quality.";
+        }
+        catch (Exception ex)
+        {
+            _status = $"Error: {ex.Message}";
+        }
+    }
+}

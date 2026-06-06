@@ -1,0 +1,113 @@
+@page "/configs"
+@inject IClientConfigService ConfigService
+
+<h1>Configurations</h1>
+
+@if (_error is not null) { <p style="color:#b91c1c;">@_error</p> }
+
+<h2>Existing</h2>
+@if (_entries is null)
+{
+    <p>Loading…</p>
+}
+else if (_entries.Count == 0)
+{
+    <p>No configurations stored.</p>
+}
+else
+{
+    <table style="border-collapse:collapse; width:100%;">
+        <thead>
+            <tr style="text-align:left; border-bottom:1px solid #ddd;">
+                <th>Config</th><th>Client</th><th>Net</th><th>Display name</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (ClientConfigEntry entry in _entries)
+            {
+                <tr style="border-bottom:1px solid #eee;">
+                    <td>@entry.Config.ConfigId</td>
+                    <td>@entry.Config.ClientId</td>
+                    <td>@entry.Config.OwnNetId@(entry.Config.ParentNetId is null ? "" : $" ▲ {entry.Config.ParentNetId}")</td>
+                    <td>@entry.Config.DisplayName</td>
+                    <td><button @onclick="() => DeleteAsync(entry.Config.ConfigId)">Delete</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2 style="margin-top:24px;">Create</h2>
+<div style="display:grid; grid-template-columns:auto 1fr; gap:8px; max-width:480px; align-items:center;">
+    <label>Config id</label><input @bind="_configId" />
+    <label>Client id</label><input @bind="_clientId" />
+    <label>Participant id</label><input @bind="_participantId" />
+    <label>Own net</label><input @bind="_ownNet" />
+    <label>Parent net (optional)</label><input @bind="_parentNet" />
+    <label>Display name</label><input @bind="_displayName" />
+    <label>Host id (optional)</label><input @bind="_hostId" />
+</div>
+<p><button @onclick="CreateAsync">Create</button></p>
+
+@code {
+    private IReadOnlyList<ClientConfigEntry>? _entries;
+    private string? _error;
+    private string _configId = string.Empty;
+    private string _clientId = string.Empty;
+    private string _participantId = string.Empty;
+    private string _ownNet = string.Empty;
+    private string _parentNet = string.Empty;
+    private string _displayName = string.Empty;
+    private string _hostId = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _error = null;
+            _entries = await ConfigService.ListAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        var config = new ClientConfigDto(
+            _configId,
+            _clientId,
+            _participantId,
+            _ownNet,
+            string.IsNullOrWhiteSpace(_parentNet) ? null : _parentNet,
+            _displayName,
+            string.IsNullOrWhiteSpace(_hostId) ? null : _hostId);
+
+        try
+        {
+            await ConfigService.CreateAsync(config);
+            _configId = _clientId = _participantId = _ownNet = _parentNet = _displayName = _hostId = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(string configId)
+    {
+        try
+        {
+            await ConfigService.DeleteAsync(configId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}
