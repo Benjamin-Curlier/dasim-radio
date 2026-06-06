@@ -50,6 +50,38 @@ public sealed record MixPlan(ParticipantId Listener, IReadOnlyList<MixSource> So
     public bool IsSilent => Sources.Count == 0;
 }
 
+/// <summary>Helpers for choosing among a listener's candidate sources.</summary>
+public static class MixSources
+{
+    /// <summary>
+    /// The dominant source: the highest priority, ties broken on the speaker id (ordinal). This is
+    /// both what <see cref="PriorityOverrideMixPolicy"/> keeps and the "trigger" the media router uses
+    /// to emit a listener's mix exactly once per cycle. Throws if <paramref name="sources"/> is empty.
+    /// </summary>
+    public static MixSource Highest(IReadOnlyList<MixSource> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        if (sources.Count == 0)
+        {
+            throw new ArgumentException("Cannot pick the highest of an empty source set.", nameof(sources));
+        }
+
+        MixSource winner = sources[0];
+        for (int i = 1; i < sources.Count; i++)
+        {
+            MixSource source = sources[i];
+            if (source.Priority > winner.Priority ||
+                (source.Priority.CompareTo(winner.Priority) == 0 &&
+                 string.CompareOrdinal(source.Speaker.Value, winner.Speaker.Value) < 0))
+            {
+                winner = source;
+            }
+        }
+
+        return winner;
+    }
+}
+
 /// <summary>
 /// Decides which of a listener's candidate sources reach their mix when more than one of their nets
 /// is active at once. The floor guarantees ≤1 holder per net, so the candidate count never exceeds
@@ -82,24 +114,7 @@ public sealed class PriorityOverrideMixPolicy : IMixPolicy
     public IReadOnlyList<MixSource> Select(IReadOnlyList<MixSource> candidates)
     {
         ArgumentNullException.ThrowIfNull(candidates);
-        if (candidates.Count <= 1)
-        {
-            return candidates;
-        }
-
-        MixSource winner = candidates[0];
-        for (int i = 1; i < candidates.Count; i++)
-        {
-            MixSource source = candidates[i];
-            if (source.Priority > winner.Priority ||
-                (source.Priority.CompareTo(winner.Priority) == 0 &&
-                 string.CompareOrdinal(source.Speaker.Value, winner.Speaker.Value) < 0))
-            {
-                winner = source;
-            }
-        }
-
-        return [winner];
+        return candidates.Count <= 1 ? candidates : [MixSources.Highest(candidates)];
     }
 }
 

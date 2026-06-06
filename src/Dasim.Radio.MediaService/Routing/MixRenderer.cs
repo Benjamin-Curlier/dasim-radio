@@ -8,11 +8,16 @@ namespace Dasim.Radio.MediaService.Routing;
 public readonly record struct RenderedFrame(ParticipantId Listener, ReadOnlyMemory<byte> Opus);
 
 /// <summary>
-/// Turns one captured frame into each recipient's output. An undegraded listener gets the source bytes
-/// untouched — a zero-transcode pass-through, the common case. A degraded listener gets the source
-/// decoded once (shared), run through the clarity DSP, and re-encoded at their quality. Holds a decoder
-/// per speaker and an encoder per degraded listener (Opus is stateful), and reuses scratch buffers, so
-/// it is single-stream: drive it from one consumer (the media-router host does).
+/// Renders each listener's output from the latest frame of every speaker. Call <see cref="Remember"/>
+/// for every captured frame, then <see cref="Render"/> with the deliveries the router triggered.
+/// <list type="bullet">
+/// <item>A single undegraded source is forwarded untouched — a zero-transcode pass-through.</item>
+/// <item>Otherwise the sources are decoded, summed, optionally degraded, and re-encoded per listener.</item>
+/// </list>
+/// Each speaker's frame is decoded at most once per cycle (a lazy "stale" flag), so an undegraded
+/// pass-through never decodes and a speaker summed into several listeners is decoded once. Holds a
+/// decoder per speaker and an encoder per transcoded listener (Opus is stateful) and reuses scratch
+/// buffers, so it is single-stream: drive it from one consumer.
 /// </summary>
 public sealed class MixRenderer : IDisposable
 {
@@ -23,11 +28,11 @@ public sealed class MixRenderer : IDisposable
     private readonly IDegradeRegistry _degrade;
     private readonly ClarityProcessor _clarity;
 
-    private readonly Dictionary<ParticipantId, IOpusDecoder> _decoders = [];
+    private readonly Dictionary<ParticipantId, SourceFrame> _sources = [];
     private readonly Dictionary<ParticipantId, ListenerStream> _listeners = [];
 
-    private readonly short[] _sourcePcm = new short[Format.SamplesPerFrame];
-    private readonly short[] _workPcm = new short[Format.SamplesPerFrame];
+    private readonly int[] _mix = new int[Format.SamplesPerFrame];
+    private readonly short[] _work = new short[Format.SamplesPerFrame];
     private readonly byte[] _encodeBuffer = new byte[OpusConstants.RecommendedMaxPacketBytes];
 
     public MixRenderer(
@@ -42,50 +47,35 @@ public sealed class MixRenderer : IDisposable
         _clarity = clarity ?? throw new ArgumentNullException(nameof(clarity));
     }
 
-    /// <summary>Produces the per-listener output for one captured frame from <paramref name="speaker"/>.</summary>
-    public IReadOnlyList<RenderedFrame> Render(
-        ParticipantId speaker, ReadOnlyMemory<byte> sourceOpus, IReadOnlyList<ParticipantId> recipients)
+    /// <summary>Records a speaker's latest captured frame. Decoding is deferred until a mix needs it.</summary>
+    public void Remember(ParticipantId speaker, ReadOnlyMemory<byte> opus)
     {
-        ArgumentNullException.ThrowIfNull(recipients);
-        if (recipients.Count == 0)
+        if (!_sources.TryGetValue(speaker, out SourceFrame? frame))
+        {
+            frame = new SourceFrame();
+            _sources[speaker] = frame;
+        }
+
+        frame.Opus = opus;
+        frame.PcmValid = false;
+    }
+
+    /// <summary>Produces the output frame for each triggered listener.</summary>
+    public IReadOnlyList<RenderedFrame> Render(IReadOnlyList<MixDelivery> deliveries)
+    {
+        ArgumentNullException.ThrowIfNull(deliveries);
+        if (deliveries.Count == 0)
         {
             return [];
         }
 
-        var output = new List<RenderedFrame>(recipients.Count);
-
-        // Partition: pass-through now, collect the degraded for a shared decode + per-listener encode.
-        // An empty source frame can't be decoded, so everyone gets it verbatim.
-        List<(ParticipantId Listener, DegradeProfile Profile)>? degraded = null;
-        foreach (ParticipantId listener in recipients)
+        var output = new List<RenderedFrame>(deliveries.Count);
+        foreach (MixDelivery delivery in deliveries)
         {
-            if (!sourceOpus.IsEmpty && _degrade.TryGetProfile(listener, out DegradeProfile profile))
+            if (RenderOne(delivery) is { } frame)
             {
-                (degraded ??= []).Add((listener, profile));
+                output.Add(frame);
             }
-            else
-            {
-                output.Add(new RenderedFrame(listener, sourceOpus));
-            }
-        }
-
-        if (degraded is null)
-        {
-            return output;
-        }
-
-        IOpusDecoder decoder = DecoderFor(speaker);
-        decoder.Decode(sourceOpus.Span, _sourcePcm);
-
-        foreach ((ParticipantId listener, DegradeProfile profile) in degraded)
-        {
-            ListenerStream stream = StreamFor(listener, profile.QualityPercent);
-
-            _sourcePcm.CopyTo(_workPcm.AsSpan());
-            _clarity.Apply(_workPcm, profile.ClarityPercent, ref stream.LowPassState);
-
-            int written = stream.Encoder.Encode(_workPcm, _encodeBuffer);
-            output.Add(new RenderedFrame(listener, _encodeBuffer.AsMemory(0, written).ToArray()));
         }
 
         return output;
@@ -93,9 +83,9 @@ public sealed class MixRenderer : IDisposable
 
     public void Dispose()
     {
-        foreach (IOpusDecoder decoder in _decoders.Values)
+        foreach (SourceFrame source in _sources.Values)
         {
-            decoder.Dispose();
+            source.Decoder?.Dispose();
         }
 
         foreach (ListenerStream stream in _listeners.Values)
@@ -103,19 +93,78 @@ public sealed class MixRenderer : IDisposable
             stream.Encoder.Dispose();
         }
 
-        _decoders.Clear();
+        _sources.Clear();
         _listeners.Clear();
     }
 
-    private IOpusDecoder DecoderFor(ParticipantId speaker)
+    private RenderedFrame? RenderOne(MixDelivery delivery)
     {
-        if (!_decoders.TryGetValue(speaker, out IOpusDecoder? decoder))
+        ParticipantId listener = delivery.Listener;
+        IReadOnlyList<MixSource> sources = delivery.Sources;
+        bool degraded = _degrade.TryGetProfile(listener, out DegradeProfile profile);
+
+        // Fast path: a single undegraded source is forwarded untouched.
+        if (sources.Count == 1 && !degraded)
         {
-            decoder = _decoderFactory.Create(Format);
-            _decoders[speaker] = decoder;
+            return _sources.TryGetValue(sources[0].Speaker, out SourceFrame? only)
+                ? new RenderedFrame(listener, only.Opus)
+                : null;
         }
 
-        return decoder;
+        Array.Clear(_mix);
+        bool any = false;
+        foreach (MixSource source in sources)
+        {
+            short[]? pcm = EnsurePcm(source.Speaker);
+            if (pcm is null)
+            {
+                continue;
+            }
+
+            for (int i = 0; i < Format.SamplesPerFrame; i++)
+            {
+                _mix[i] += pcm[i];
+            }
+
+            any = true;
+        }
+
+        if (!any)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < Format.SamplesPerFrame; i++)
+        {
+            _work[i] = (short)Math.Clamp(_mix[i], short.MinValue, short.MaxValue);
+        }
+
+        int quality = degraded ? profile.QualityPercent : 100;
+        ListenerStream stream = StreamFor(listener, quality);
+        if (degraded)
+        {
+            _clarity.Apply(_work, profile.ClarityPercent, ref stream.LowPassState);
+        }
+
+        int written = stream.Encoder.Encode(_work, _encodeBuffer);
+        return new RenderedFrame(listener, _encodeBuffer.AsMemory(0, written).ToArray());
+    }
+
+    private short[]? EnsurePcm(ParticipantId speaker)
+    {
+        if (!_sources.TryGetValue(speaker, out SourceFrame? frame) || frame.Opus.IsEmpty)
+        {
+            return null;
+        }
+
+        if (!frame.PcmValid)
+        {
+            frame.Decoder ??= _decoderFactory.Create(Format);
+            frame.Decoder.Decode(frame.Opus.Span, frame.Pcm);
+            frame.PcmValid = true;
+        }
+
+        return frame.Pcm;
     }
 
     private ListenerStream StreamFor(ParticipantId listener, int qualityPercent)
@@ -140,6 +189,18 @@ public sealed class MixRenderer : IDisposable
         };
         _listeners[listener] = stream;
         return stream;
+    }
+
+    private sealed class SourceFrame
+    {
+        public short[] Pcm { get; } = new short[Format.SamplesPerFrame];
+
+        public ReadOnlyMemory<byte> Opus { get; set; }
+
+        public bool PcmValid { get; set; }
+
+        // Created lazily on first decode, so an undegraded pass-through never builds a decoder.
+        public IOpusDecoder? Decoder { get; set; }
     }
 
     private sealed class ListenerStream

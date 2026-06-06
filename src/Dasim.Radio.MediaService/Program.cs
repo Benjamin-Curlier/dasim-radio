@@ -8,9 +8,14 @@ HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 string natsUrl = builder.Configuration.GetValue<string>("Nats:Url") ?? "nats://srv_brk:4222";
 
+MixCombinePolicy combinePolicy =
+    Enum.TryParse(builder.Configuration["Routing:CombinePolicy"], ignoreCase: true, out MixCombinePolicy parsed)
+        ? parsed
+        : MixCombinePolicy.Override;
+
 builder.Services.AddDasimRadioMessaging(natsUrl);
 builder.Services.AddFloorAuthority();
-builder.Services.AddMediaRouting();
+builder.Services.AddMediaRouting(combinePolicy);
 
 IHost host = builder.Build();
 host.Run();
