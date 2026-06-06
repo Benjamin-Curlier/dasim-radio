@@ -40,11 +40,17 @@ public sealed partial class App : Application
             {
                 try
                 {
-                    engine.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    // Dispose the whole container: it tears down the engine, the global PTT hook (+ its
+                    // thread) and the NATS connection in one orderly shutdown — none of which the engine
+                    // owns. ServiceProvider is IAsyncDisposable, which the NATS connection requires.
+                    if (Program.Services is IAsyncDisposable container)
+                    {
+                        container.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    }
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "Radio client engine shutdown failed.");
+                    logger.LogWarning(ex, "Radio client shutdown failed.");
                 }
             };
         }
