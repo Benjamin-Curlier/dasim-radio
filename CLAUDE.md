@@ -25,8 +25,8 @@ API). Shared libraries + thin deployable hosts.
 - **Client UI**: Avalonia (native audio + global PTT hotkeys)
 - **Manager UI**: Blazor (no audio)
 - **Audio I/O**: OwnAudioSharp / PortAudio / miniaudio (cross-platform). Never NAudio (Windows-only).
-- **Codec**: Opus via **Concentus** (managed). Keep it behind the `Dasim.Radio.Audio`
-  abstraction so the media service can swap to native **libopus** if it saturates.
+- **Codec**: Opus behind the `Dasim.Radio.Audio` seam — **Concentus** (managed) in the client,
+  native **libopus** (OpusSharp) in the media service. Both implemented.
 - **Messaging**: `NATS.Net` (JetStream/KV/Services + core)
 - **Tests**: xUnit v3, FakeTimeProvider; Testcontainers (NATS) for integration
 
@@ -43,18 +43,25 @@ API). Shared libraries + thin deployable hosts.
 ## Repository layout
 
 ```
-src/Dasim.Radio.Core        Domain: force tree + floor control       (no dependencies)
-src/Dasim.Radio.Contracts   NATS subjects + wire DTOs (primitives)   (no dependencies)
-src/Dasim.Radio.Messaging   NATS.Net wrappers: core audio bus, KV    (-> Contracts)
-                            control store, floor/presence/degrade
-                            signalling, agent-command service
-tests/Dasim.Radio.Core.Tests
-tests/Dasim.Radio.Integration.Tests   Testcontainers NATS round-trips
-docs/architecture.md        Design + decision log (source of truth)
+src/Dasim.Radio.Core            Domain: force tree, floor control, net topology,    (no deps)
+                                mix planner + IMixPolicy (the crown jewel)
+src/Dasim.Radio.Contracts       NATS subjects + wire DTOs (primitives only)         (no deps)
+src/Dasim.Radio.Messaging       NATS.Net wrappers: audio bus, KV store, floor/      (-> Contracts)
+                                presence/degrade signalling, agent-command service
+src/Dasim.Radio.Audio           Codec + audio I/O abstraction (IOpusEncoder/Decoder, AudioFormat)
+src/Dasim.Radio.Audio.Concentus Managed-Opus (Concentus) impl — for the client
+src/Dasim.Radio.Audio.Opus      Native-libopus (OpusSharp) impl — for the media service
+src/Dasim.Radio.MediaService    The authority host: floor authority + force-tree provider +
+                                force-tree priority resolver + per-listener router/mix/degrade
+tests/  Core.Tests · Integration.Tests (Testcontainers NATS) · Audio.Tests ·
+        Audio.Opus.Tests · MediaService.Tests
+benchmarks/Dasim.Radio.Audio.Benchmarks   BenchmarkDotNet (encode throughput)
+docs/architecture.md            Design + decision log (source of truth)
+docs/routing-mix-model.md       Routing/mix design (subtree nets, policies, transmit)
 ```
 
-Planned (Phase 2): `Dasim.Radio.Audio`, `Dasim.Radio.MediaService`,
-`Dasim.Radio.Agent`, `Dasim.Radio.Client`, `Dasim.Radio.Manager`.
+Still to build (Phase 2): `Dasim.Radio.Agent` (daemon), `Dasim.Radio.Client` (Avalonia),
+`Dasim.Radio.Manager` (Blazor); device I/O via `OwnAudioSharp`.
 
 ## Commands
 
@@ -74,10 +81,29 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 
 ## NATS subject scheme (see `Dasim.Radio.Contracts.Subjects`)
 
-- Voice: `audio.in.<clientId>`, `audio.out.<clientId>` (core NATS)
+- Voice: `audio.in.<clientId>`, `audio.out.<clientId>` (core NATS). **Audio is per-client, not
+  per-net** — the media service mixes and decides what each client receives. Clearance ("can't
+  hear nets above your rank") is therefore enforced **server-side in the router**, not by per-net
+  subjects; NATS subject perms only isolate each client to its own `audio.in/out.<self>` and govern
+  `floor.*`. (Refines architecture §5 — see issue #11.)
 - Floor: `floor.request`, `floor.release`, `floor.events.<netId>`
 - Control: `agent.<hostId>.cmd`, `presence.heartbeat`, `cmd.degrade`
-- KV buckets: `force_tree`, `endpoints`, `configs`, `presence`, `floor_state`
+- KV buckets: `force_tree` (key `Subjects.Keys.ForceTreeCurrent` = `"current"`), `endpoints`,
+  `configs`, `presence`, `floor_state`
+
+## Routing & mix model (see `docs/routing-mix-model.md`)
+
+- **Subtree nets**: one net per non-leaf force-tree node = `{node} ∪ {direct children}`; net id =
+  node id. A leader is on 2 nets (owns one = talk *down*, parent's = talk *up*); a leaf is on 1.
+- **Strict floor ⇒ bounded mix**: ≤1 speaker per net, so a listener mixes ≤ (their nets) ≈ 2
+  sources — never 50. The real cost is per-listener *encode* fan-out (de-risked by the benchmark).
+- **Combine policy is a strategy** (`IMixPolicy`): `PriorityOverride` (default — a superior cuts
+  through) or `Additive` (sum concurrent nets). Selected by `Routing:CombinePolicy`.
+- **Transmit = net-select** (one net per PTT): default own net, modifier = parent net.
+- **Priority is authoritative**: `ForceTreePriorityResolver` derives it from the force-tree node,
+  never the client-sent wire value. Unknown participant → lowest priority (and routes to nobody).
+- Default (override) gives a **zero-transcode pass-through**; only degraded or multi-source
+  (additive) listeners are decoded → mixed → re-encoded.
 
 ## Messaging library — usage conventions (consumed by the Phase-2 hosts)
 
@@ -91,13 +117,21 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 
 ## Status
 
-- **Done**: solution + conventions, `Core` (force tree + floor control), `Contracts`, `Messaging`
-  (NATS.Net wrappers + Testcontainers integration tests), unit tests (13) + integration tests (8),
-  CI (Linux/Windows + SonarCloud), GitHub repo + Ruleset + wiki.
-- **Next (Phase 2)**: continue from [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Audio,
-  MediaService (libopus PoC), Agent, Client (Avalonia), Manager (Blazor).
+- **Done**: solution + conventions; `Core` (force tree, floor control, net topology, mix planner);
+  `Contracts`; `Messaging` (NATS.Net wrappers + Testcontainers integration); `Audio` seam +
+  `Concentus` + `OpusSharp` codecs + encode benchmark; `MediaService` — floor authority +
+  force-tree provider/priority resolver + **per-listener routing, mix (override + additive),
+  degradation** (Phase-2 issue #7 complete, PRs #18–#22). CI (Linux/Windows + SonarCloud ≥80%
+  new-code), GitHub Ruleset + wiki.
+- **Deferred (tracked as issues)**: measured perf pass (per-frame allocations + encode-sharing +
+  encoder retune-via-CTL — BenchmarkDotNet first); per-net degrade scoping (currently
+  whole-listener); NATS security refinement (issue #11).
+- **Next (Phase 2)**: see [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Agent, Client
+  (Avalonia, ⚠️ spike Wayland PTT first), Manager (Blazor), device I/O (`OwnAudioSharp`).
 
 ## Subagents (`.claude/agents/`)
 
 - **floor-control-reviewer** — for `Core` floor-control + `Contracts` changes.
-- **realtime-audio-reviewer** — for `Audio`/`MediaService` hot-path changes.
+- **realtime-audio-reviewer** — for `Audio`/`MediaService` hot-path changes. **Run it on every
+  media-service hot-path PR (mix/encode/decode) before merge** — it caught the allocation/
+  encode-sharing scaling items on the additive slice.
