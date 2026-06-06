@@ -5,6 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/Dasim.Radio.Audio.Concentus/Dasim.Radio.Audio.Concentus.csproj" />
     <Project Path="src/Dasim.Radio.Audio.Opus/Dasim.Radio.Audio.Opus.csproj" />
+    <Project Path="src/Dasim.Radio.Agent/Dasim.Radio.Agent.csproj" />
     <Project Path="src/Dasim.Radio.Audio/Dasim.Radio.Audio.csproj" />
     <Project Path="src/Dasim.Radio.Contracts/Dasim.Radio.Contracts.csproj" />
     <Project Path="src/Dasim.Radio.Core/Dasim.Radio.Core.csproj" />
@@ -12,6 +13,7 @@
     <Project Path="src/Dasim.Radio.Messaging/Dasim.Radio.Messaging.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Dasim.Radio.Agent.Tests/Dasim.Radio.Agent.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Audio.Opus.Tests/Dasim.Radio.Audio.Opus.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Audio.Tests/Dasim.Radio.Audio.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Core.Tests/Dasim.Radio.Core.Tests.csproj" />
