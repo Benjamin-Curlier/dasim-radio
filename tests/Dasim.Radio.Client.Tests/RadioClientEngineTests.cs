@@ -13,6 +13,10 @@ public sealed class RadioClientEngineTests
     private const string Me = "p1";
     private const string ClientId = "c1";
 
+    // A signal/state we expect within this budget; bounded so a missed transition fails the test fast
+    // instead of hanging the run (the engine's pumps are async and run on background tasks).
+    private static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(15);
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private sealed record Harness(
@@ -64,12 +68,14 @@ public sealed class RadioClientEngineTests
         engine.StateChanged += Handler;
         try
         {
+            // Subscribe first, then check the current state — so a transition that already happened
+            // (or happens before we await) is never missed.
             if (predicate(engine.State))
             {
                 return;
             }
 
-            await tcs.Task.WaitAsync(Ct);
+            await tcs.Task.WaitAsync(WaitBudget, Ct);
         }
         finally
         {
@@ -84,8 +90,11 @@ public sealed class RadioClientEngineTests
         await h.Engine.StartAsync(Ct);
         try
         {
+            // Capture the signal BEFORE triggering: the receive pump may fire before we'd otherwise read
+            // .Next (which would hand back a fresh, never-completing task).
+            Task submitted = h.Playback.SubmitSignal.Next;
             h.Bus.PushMixed([7]);
-            await h.Playback.SubmitSignal.Next.WaitAsync(Ct);
+            await submitted.WaitAsync(WaitBudget, Ct);
 
             short[] played = Assert.Single(h.Playback.Submitted);
             Assert.Equal(AudioFormat.Voice.SamplesPerFrame, played.Length);
@@ -104,8 +113,9 @@ public sealed class RadioClientEngineTests
         await h.Engine.StartAsync(Ct);
         try
         {
+            Task submitted = h.Playback.SubmitSignal.Next;
             h.Bus.PushMixed([]);
-            await h.Playback.SubmitSignal.Next.WaitAsync(Ct);
+            await submitted.WaitAsync(WaitBudget, Ct);
 
             short[] played = Assert.Single(h.Playback.Submitted);
             Assert.Equal(AudioFormat.Voice.SamplesPerFrame, played.Length);
@@ -124,8 +134,9 @@ public sealed class RadioClientEngineTests
         await h.Engine.StartAsync(Ct);
         try
         {
+            Task requested = h.Floor.RequestSignal.Next;
             h.Ptt.Press();
-            await h.Floor.RequestSignal.Next.WaitAsync(Ct);
+            await requested.WaitAsync(WaitBudget, Ct);
 
             FloorRequestMessage request = Assert.Single(h.Floor.Requests);
             Assert.Equal(Net, request.NetId);
@@ -144,8 +155,9 @@ public sealed class RadioClientEngineTests
         await h.Engine.StartAsync(Ct);
         try
         {
+            Task requested = h.Floor.RequestSignal.Next;
             h.Ptt.Press();
-            await h.Floor.RequestSignal.Next.WaitAsync(Ct);
+            await requested.WaitAsync(WaitBudget, Ct);
 
             // Requesting (not yet granted): a captured frame must NOT be transmitted.
             h.Capture.Capture(Pcm(1));
@@ -154,8 +166,9 @@ public sealed class RadioClientEngineTests
             h.Floor.PushEvent(Net, GrantedToUs());
             await WaitForStateAsync(h.Engine, s => s.IsTransmitting);
 
+            Task captured = h.Bus.CapturedSignal.Next;
             h.Capture.Capture(Pcm(2));
-            await h.Bus.CapturedSignal.Next.WaitAsync(Ct);
+            await captured.WaitAsync(WaitBudget, Ct);
 
             byte[] sent = Assert.Single(h.Bus.PublishedCaptured);
             Assert.Equal(FakeOpusEncoder.Marker, sent[0]);
@@ -177,8 +190,9 @@ public sealed class RadioClientEngineTests
             h.Floor.PushEvent(Net, GrantedToUs());
             await WaitForStateAsync(h.Engine, s => s.IsTransmitting);
 
+            Task released = h.Floor.ReleaseSignal.Next;
             h.Ptt.Release();
-            await h.Floor.ReleaseSignal.Next.WaitAsync(Ct);
+            await released.WaitAsync(WaitBudget, Ct);
             await WaitForStateAsync(h.Engine, s => s.Phase == PttPhase.Idle);
 
             FloorReleaseMessage release = Assert.Single(h.Floor.Releases);
