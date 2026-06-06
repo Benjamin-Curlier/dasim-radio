@@ -103,10 +103,10 @@ transcode path for that listener.
 - **DTX assumption** — the additive trigger relies on the holder streaming continuously (client DTX
   off), so a non-trigger source contributes as a buffered peer; a stale/absent peer is treated as
   silence.
-- **Data-plane saturation** — the publish loop awaits NATS.Net per listener; `PublishAsync` queues
-  into the connection's write pipe (no per-call flush), and back-pressure is per-*connection*, so a
-  fronting channel cannot relieve it. Under sustained saturation the right fix is **dropping stale
-  audio**, not more buffering — not yet implemented (see `MediaRouterService`).
+- **Data-plane saturation** (issue #27) — the publish loop awaits NATS.Net per listener;
+  `PublishAsync` queues into the connection's write pipe (no per-call flush), and back-pressure is
+  per-*connection*, so a fronting channel cannot relieve it. Under sustained saturation the right fix
+  is **dropping stale audio**, not more buffering — not yet implemented (see `MediaRouterService`).
 
 ### Done — measured perf pass
 

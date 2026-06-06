@@ -25,8 +25,8 @@
     index-not-`foreach`), added **profile encode-sharing**, **in-place encoder retune**
     (`IOpusEncoder.Retune`), and an **xorshift clarity** dither. ~185 KB/tick → **0**. Re-reviewed
     clean by both domain agents.
-- **Deferred (open issues):** per-net degrade scoping (currently whole-listener); drop stale audio
-  under sustained data-plane saturation (the publish loop relies on NATS.Net write-pipe back-pressure).
+- **Deferred (open issues):** per-net degrade scoping (#24, currently whole-listener); drop stale audio
+  under sustained data-plane saturation (#27 — the publish loop relies on NATS.Net write-pipe back-pressure).
 - **Tooling facts:** .NET SDK 10.0.201; `gh` installed at `C:\Program Files\GitHub CLI`
   (prepend to `$env:PATH` inside tool shells if not already resolved). NATS broker is
   `srv_brk:4222`. Solution is `Dasim.Radio.slnx` (.NET 10 `.slnx` format).
