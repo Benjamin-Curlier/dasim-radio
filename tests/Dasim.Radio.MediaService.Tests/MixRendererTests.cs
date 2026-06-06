@@ -1,3 +1,4 @@
+using Dasim.Radio.Audio;
 using Dasim.Radio.Contracts;
 using Dasim.Radio.Core;
 using Dasim.Radio.MediaService.Degrade;
@@ -13,7 +14,7 @@ public sealed class MixRendererTests
     private readonly DegradeRegistry _degrade = new();
 
     private MixRenderer NewRenderer() =>
-        new(_decoders, _encoders, _degrade, new ClarityProcessor(new Random(1)));
+        new(_decoders, _encoders, _degrade, new ClarityProcessor(noiseSeed: 1));
 
     private static ParticipantId P(string id) => new(id);
 
@@ -94,7 +95,7 @@ public sealed class MixRendererTests
     }
 
     [Fact]
-    public void Changing_quality_rebuilds_the_encoder()
+    public void Changing_quality_retunes_the_encoder_in_place()
     {
         using MixRenderer sut = NewRenderer();
         sut.Remember(P("spk"), new byte[] { 1 });
@@ -104,13 +105,42 @@ public sealed class MixRendererTests
         _degrade.Apply(Degrade("L1", 40, 100));
         sut.Render([Delivery("L1", "spk")]);
 
-        Assert.Equal(2, _encoders.Created.Count);
-        Assert.Equal(
-            QualityEncoderSettings.ForQuality(80).BitrateBitsPerSecond,
-            _encoders.Created[0].Settings.BitrateBitsPerSecond);
-        Assert.Equal(
-            QualityEncoderSettings.ForQuality(40).BitrateBitsPerSecond,
-            _encoders.Created[1].Settings.BitrateBitsPerSecond);
+        // The quality change re-tunes the existing encoder (keeping Opus state) rather than rebuilding it.
+        FakeOpusEncoder encoder = Assert.Single(_encoders.Created);
+        OpusEncoderSettings retune = Assert.Single(encoder.Retunes);
+        Assert.Equal(QualityEncoderSettings.ForQuality(40).BitrateBitsPerSecond, retune.BitrateBitsPerSecond);
+        Assert.Equal(QualityEncoderSettings.ForQuality(40).Complexity, retune.Complexity);
+        // The encoder was created at the original quality, then mutated to the new one.
+        Assert.Equal(QualityEncoderSettings.ForQuality(40).BitrateBitsPerSecond, encoder.Settings.BitrateBitsPerSecond);
+    }
+
+    [Fact]
+    public void Listeners_with_an_identical_profile_share_one_encode()
+    {
+        _degrade.Apply(Degrade("L1", 50, 60));
+        _degrade.Apply(Degrade("L2", 50, 60));
+        using MixRenderer sut = NewRenderer();
+        sut.Remember(P("spk"), new byte[] { 9 });
+
+        IReadOnlyList<RenderedFrame> frames = sut.Render([Delivery("L1", "spk"), Delivery("L2", "spk")]);
+
+        Assert.Equal(2, frames.Count);
+        // One encoder for the shared profile, and both listeners get the very same bytes.
+        Assert.Single(_encoders.Created);
+        Assert.True(frames[0].Opus.Span.SequenceEqual(frames[1].Opus.Span));
+    }
+
+    [Fact]
+    public void Listeners_with_different_quality_do_not_share_an_encode()
+    {
+        _degrade.Apply(Degrade("L1", 50, 60));
+        _degrade.Apply(Degrade("L2", 30, 60)); // different quality => different profile
+        using MixRenderer sut = NewRenderer();
+        sut.Remember(P("spk"), new byte[] { 9 });
+
+        sut.Render([Delivery("L1", "spk"), Delivery("L2", "spk")]);
+
+        Assert.Equal(2, _encoders.Created.Count); // a separate encode per distinct profile
     }
 
     [Fact]
@@ -130,5 +160,50 @@ public sealed class MixRendererTests
         using MixRenderer sut = NewRenderer();
 
         Assert.Empty(sut.Render([]));
+    }
+
+    [Fact]
+    public void Consecutive_cycles_each_render_correctly_with_reused_buffers()
+    {
+        // The renderer reuses its scratch/output buffers across cycles (single-consumer contract). Each
+        // cycle's output must be consumed before the next Render; once it is, the reuse must not corrupt
+        // the following cycle. Two transcoded cycles with different content prove that. Quality<100 forces
+        // the transcode path; clarity 100 keeps the DSP a no-op so the echoed sample is deterministic.
+        _degrade.Apply(Degrade("L1", 50, 100));
+        using MixRenderer sut = NewRenderer();
+
+        sut.Remember(P("spk"), new byte[] { 10 });
+        RenderedFrame first = Assert.Single(sut.Render([Delivery("L1", "spk")]));
+        byte firstEcho = first.Opus.Span[1]; // the fake encoder echoes the first PCM sample
+
+        sut.Remember(P("spk"), new byte[] { 99 });
+        RenderedFrame second = Assert.Single(sut.Render([Delivery("L1", "spk")]));
+        byte secondEcho = second.Opus.Span[1];
+
+        // Different source bytes -> different decoded PCM -> different encoded echo, proving the second
+        // cycle rendered fresh content rather than re-serving the first cycle's reused buffer.
+        Assert.NotEqual(firstEcho, secondEcho);
+        Assert.Single(_encoders.Created); // the steady profile kept its one (re)used encoder
+    }
+
+    [Fact]
+    public void An_idle_profiles_encoder_is_evicted_and_disposed()
+    {
+        _degrade.Apply(Degrade("L1", 50, 100));
+        using MixRenderer sut = NewRenderer();
+        sut.Remember(P("a"), new byte[] { 1 });
+        sut.Remember(P("b"), new byte[] { 2 });
+
+        // First cycle builds the encoder for profile {a}; it then goes idle as L1 switches to hearing b.
+        sut.Render([Delivery("L1", "a")]);
+        FakeOpusEncoder forA = _encoders.Created[0];
+
+        // A different source set => no migration; profile {a} idles. Drive past the eviction window.
+        for (int i = 0; i < 260; i++)
+        {
+            sut.Render([Delivery("L1", "b")]);
+        }
+
+        Assert.True(forA.Disposed, "the idle profile's encoder should have been evicted and disposed");
     }
 }

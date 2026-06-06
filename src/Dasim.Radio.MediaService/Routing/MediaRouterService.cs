@@ -89,9 +89,21 @@ public sealed class MediaRouterService : BackgroundService
             return;
         }
 
-        foreach (RenderedFrame rendered in _renderer.Render(deliveries))
+        // Publishing is sequential on purpose. NATS.Net's PublishAsync does NOT flush the socket per
+        // call: its CommandWriter writes the frame into a per-connection Pipe and returns once it is
+        // queued (a flush is kicked off asynchronously), so each await here completes synchronously in
+        // the common case. It only blocks under connection-wide buffer saturation — which is shared by
+        // every subject, so a per-listener fan-out channel could not relieve it; it would only add a
+        // second queue and force per-frame copies (the rendered frames alias the renderer's reused
+        // scratch, valid only until the next Render). If load testing ever shows the data plane
+        // saturating the connection, the right fix is dropping stale audio, not more buffering.
+        // Index, don't foreach: Render returns an IReadOnlyList-typed value, and a foreach over that
+        // boxes the enumerator on this per-frame path.
+        IReadOnlyList<RenderedFrame> rendered = _renderer.Render(deliveries);
+        for (int i = 0; i < rendered.Count; i++)
         {
-            await _audioBus.PublishMixedAsync(rendered.Listener.Value, rendered.Opus, cancellationToken)
+            RenderedFrame mixed = rendered[i];
+            await _audioBus.PublishMixedAsync(mixed.Listener.Value, mixed.Opus, cancellationToken)
                 .ConfigureAwait(false);
         }
     }

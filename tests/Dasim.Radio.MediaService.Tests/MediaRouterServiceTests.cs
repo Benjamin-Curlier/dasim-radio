@@ -18,7 +18,7 @@ public sealed class MediaRouterServiceTests
 
     // No degrade profiles set, so the renderer is a pure pass-through (bytes forwarded unchanged).
     private static MixRenderer PassThroughRenderer() =>
-        new(new FakeOpusDecoderFactory(), new FakeOpusEncoderFactory(), new DegradeRegistry(), new ClarityProcessor(new Random(1)));
+        new(new FakeOpusDecoderFactory(), new FakeOpusEncoderFactory(), new DegradeRegistry(), new ClarityProcessor(noiseSeed: 1));
 
     [Fact]
     public async Task Forwards_a_holders_frame_to_each_listener()

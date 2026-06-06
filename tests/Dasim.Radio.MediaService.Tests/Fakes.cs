@@ -328,7 +328,11 @@ internal sealed class FakeOpusEncoder(OpusEncoderSettings settings) : IOpusEncod
 
     public AudioFormat Format => AudioFormat.Voice;
 
-    public OpusEncoderSettings Settings { get; } = settings;
+    /// <summary>The encoder's current tuning — the creation settings, then whatever <see cref="Retune"/> last applied.</summary>
+    public OpusEncoderSettings Settings { get; private set; } = settings;
+
+    /// <summary>Each <see cref="Retune"/> call's settings, in order, so a test can prove an in-place re-tune.</summary>
+    public List<OpusEncoderSettings> Retunes { get; } = [];
 
     public int Encode(ReadOnlySpan<short> pcm, Span<byte> output)
     {
@@ -337,9 +341,16 @@ internal sealed class FakeOpusEncoder(OpusEncoderSettings settings) : IOpusEncod
         return 2;
     }
 
-    public void Dispose()
+    /// <summary>Set once <see cref="Dispose"/> runs, so a test can prove an idle encoder was evicted.</summary>
+    public bool Disposed { get; private set; }
+
+    public void Retune(OpusEncoderSettings newSettings)
     {
+        Settings = newSettings;
+        Retunes.Add(newSettings);
     }
+
+    public void Dispose() => Disposed = true;
 }
 
 /// <summary>A fake decoder factory that records each decoder it creates.</summary>

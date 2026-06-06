@@ -20,8 +20,13 @@
   - **MediaService** (#7, PRs #18–#22) — floor authority host; force-tree provider; **force-tree
     priority resolver** (closes the rank-spoofing gap); **per-listener routing + mix (override +
     additive) + degradation**. See [routing-mix-model.md](routing-mix-model.md). **Issue #7 done.**
-- **Deferred (open issues):** measured perf pass (per-frame allocations + encode-sharing + encoder
-  retune-via-CTL — BenchmarkDotNet first); per-net degrade scoping (currently whole-listener).
+  - **Mix hot-path perf pass** — measured (`MixHotPath` + `Clarity` benchmarks first), then made the
+    mix tick allocation-free (pooled router/renderer scratch, version-cached floor snapshot,
+    index-not-`foreach`), added **profile encode-sharing**, **in-place encoder retune**
+    (`IOpusEncoder.Retune`), and an **xorshift clarity** dither. ~185 KB/tick → **0**. Re-reviewed
+    clean by both domain agents.
+- **Deferred (open issues):** per-net degrade scoping (currently whole-listener); drop stale audio
+  under sustained data-plane saturation (the publish loop relies on NATS.Net write-pipe back-pressure).
 - **Tooling facts:** .NET SDK 10.0.201; `gh` installed at `C:\Program Files\GitHub CLI`
   (prepend to `$env:PATH` inside tool shells if not already resolved). NATS broker is
   `srv_brk:4222`. Solution is `Dasim.Radio.slnx` (.NET 10 `.slnx` format).
@@ -76,7 +81,8 @@ Issues are tracked on GitHub under the **`phase:2`** label:
      per-listener routing + mix (override + additive) + degradation — see
      [routing-mix-model.md](routing-mix-model.md).
    - Reviewed with the **realtime-audio-reviewer** agent. **Encode-sharing** (group listeners by
-     net-set + degradation profile) is deferred to a *measured* perf pass (BenchmarkDotNet first).
+     `(source-set, quality, clarity)` profile) + the measured per-frame perf pass are **done** — see
+     [routing-mix-model.md](routing-mix-model.md) §6 and the `MixHotPath` benchmark.
 
 4. **`feature/agent` → `Dasim.Radio.Agent`** — daemon: presence heartbeat (discovery) +
    `agent.<host>.cmd` (launch/stop/reconfigure) via NATS Services. Consider Native AOT.
@@ -94,7 +100,8 @@ Issues are tracked on GitHub under the **`phase:2`** label:
 
 - **Wayland breaks the global PTT** (item 5) — spike before building the client UI.
 - **Native libopus glibc baseline** — if ever hand-building, match the deployment baseline.
-- **Per-listener encode cost** — measure (item 3); fall back to encode-sharing / complexity 5–7.
+- **Per-listener encode cost** — measured (perf pass); profile encode-sharing + complexity-5 cap
+  landed. Validate again on the real deployment CPU with live (continuously-varying) voice.
 
 ## Cross-session continuity
 

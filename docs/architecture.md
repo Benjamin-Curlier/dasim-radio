@@ -103,11 +103,11 @@ Resolved:
 - ~~`Dasim.Radio.Messaging`, `Dasim.Radio.Audio`, `Dasim.Radio.Integration.Tests`~~ — done.
 - ~~Derive nets and per-participant priority from the force tree~~ — D8/D11; see
   [routing-mix-model.md](routing-mix-model.md).
+- ~~Per-listener **encode sharing** + measured per-frame perf pass~~ — done; one encode per shared
+  `(source-set, quality, clarity)` profile, allocation-free hot path, encoder retune via CTL. See
+  [routing-mix-model.md](routing-mix-model.md) §6 and the `MixHotPath` benchmark.
 
 Still open:
-- Per-listener **encode sharing** (group listeners by net-set + degradation profile) — deferred to
-  a *measured* perf pass (BenchmarkDotNet first); strict floor keeps real fan-out low, so measure
-  before optimising.
 - Remaining hosts: `Dasim.Radio.Agent`, `Dasim.Radio.Client` (Avalonia), `Dasim.Radio.Manager`
   (Blazor); device I/O (`OwnAudioSharp`).
 - NATS security hardening (TLS + NKey/JWT + the per-client subject-permission model above) — issue #11.
