@@ -9,6 +9,9 @@ namespace Dasim.Radio.Client.Audio.OwnAudio;
 /// <summary>
 /// Plays decoded PCM via OwnAudioSharp, converting the radio's 16-bit frames to float and sending them
 /// to the engine. Build-only (needs the native engine + a real device); <b>single-use</b>.
+/// <para><b><see cref="Start"/> blocks</b> while the native engine initializes (tens of ms to several
+/// seconds) — call it off the UI thread. <see cref="Submit"/> is not thread-safe; call it from a single
+/// pump (the receive loop).</para>
 /// </summary>
 public sealed class OwnAudioPlaybackDevice : IAudioPlaybackDevice
 {
@@ -49,9 +52,21 @@ public sealed class OwnAudioPlaybackDevice : IAudioPlaybackDevice
             config.OutputDeviceId = _deviceId;
         }
 
-        _engine = OwnAudioEngineFactory.Create(config);
-        _engine.Initialize(config);
-        _engine.Start();
+        IOwnAudioEngine engine = OwnAudioEngineFactory.Create(config);
+        int initResult = engine.Initialize(config);
+        if (initResult != 0)
+        {
+            engine.Dispose();
+            throw new InvalidOperationException($"OwnAudio playback engine failed to initialize (code {initResult}).");
+        }
+
+        int startResult = engine.Start();
+        if (startResult != 0)
+        {
+            _logger.LogWarning("OwnAudio playback engine Start returned {Code}.", startResult);
+        }
+
+        _engine = engine;
         _logger.LogInformation("OwnAudio playback started ({Device}).", _deviceId ?? "default");
     }
 
@@ -93,5 +108,6 @@ public sealed class OwnAudioPlaybackDevice : IAudioPlaybackDevice
         }
 
         _engine?.Dispose();
+        _engine = null;
     }
 }
