@@ -6,15 +6,11 @@
 @if (_error is not null) { <p style="color:#b91c1c;">@_error</p> }
 
 <h2>Existing</h2>
-@if (_entries is null)
+@if (!_loaded)
 {
     <p>Loading…</p>
 }
-else if (_entries.Count == 0)
-{
-    <p>No configurations stored.</p>
-}
-else
+else if (_entries is { Count: > 0 })
 {
     <table style="border-collapse:collapse; width:100%;">
         <thead>
@@ -36,6 +32,10 @@ else
         </tbody>
     </table>
 }
+else if (_error is null)
+{
+    <p>No configurations stored.</p>
+}
 
 <h2 style="margin-top:24px;">Create</h2>
 <div style="display:grid; grid-template-columns:auto 1fr; gap:8px; max-width:480px; align-items:center;">
@@ -51,6 +51,7 @@ else
 
 @code {
     private IReadOnlyList<ClientConfigEntry>? _entries;
+    private bool _loaded;
     private string? _error;
     private string _configId = string.Empty;
     private string _clientId = string.Empty;
@@ -72,6 +73,10 @@ else
         catch (Exception ex)
         {
             _error = ex.Message;
+        }
+        finally
+        {
+            _loaded = true;
         }
     }
 

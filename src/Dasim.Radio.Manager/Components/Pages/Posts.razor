@@ -11,15 +11,11 @@
     @if (_error is not null) { <span style="margin-left:12px; color:#b91c1c;">@_error</span> }
 </p>
 
-@if (_posts is null)
+@if (!_loaded)
 {
     <p>Loading…</p>
 }
-else if (_posts.Count == 0)
-{
-    <p>No posts are currently online.</p>
-}
-else
+else if (_posts is { Count: > 0 })
 {
     <table style="border-collapse:collapse; width:100%;">
         <thead>
@@ -30,19 +26,24 @@ else
         <tbody>
             @foreach (PostStatus post in _posts)
             {
+                string host = post.Heartbeat.HostId;
                 <tr style="border-bottom:1px solid #eee;">
-                    <td>@post.Heartbeat.HostName <span style="opacity:.6;">(@post.Heartbeat.HostId)</span></td>
+                    <td>@post.Heartbeat.HostName <span style="opacity:.6;">(@host)</span></td>
                     <td>@(post.IsStale ? "stale" : "online")</td>
                     <td>@(post.Heartbeat.ClientId ?? "—")</td>
                     <td>
-                        <input @bind="_configId" placeholder="config id" style="width:120px;" />
-                        <button @onclick="() => LaunchAsync(post.Heartbeat.HostId)">Launch</button>
-                        <button @onclick="() => StopAsync(post.Heartbeat.HostId)">Stop</button>
+                        <input @bind="_configIds[host]" placeholder="config id" style="width:120px;" />
+                        <button @onclick="() => LaunchAsync(host)" disabled="@string.IsNullOrWhiteSpace(_configIds[host])">Launch</button>
+                        <button @onclick="() => StopAsync(host)">Stop</button>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+}
+else if (_error is null)
+{
+    <p>No posts are currently online.</p>
 }
 
 <h2 style="margin-top:24px;">Degrade a listener</h2>
@@ -50,15 +51,16 @@ else
     <input @bind="_degradeTarget" placeholder="client id" />
     <label>Quality <input type="number" min="0" max="100" @bind="_quality" style="width:64px;" /></label>
     <label>Clarity <input type="number" min="0" max="100" @bind="_clarity" style="width:64px;" /></label>
-    <button @onclick="DegradeAsync">Apply</button>
-    <button @onclick="ResetDegradeAsync">Reset</button>
+    <button @onclick="DegradeAsync" disabled="@string.IsNullOrWhiteSpace(_degradeTarget)">Apply</button>
+    <button @onclick="ResetDegradeAsync" disabled="@string.IsNullOrWhiteSpace(_degradeTarget)">Reset</button>
 </div>
 
 @code {
     private IReadOnlyList<PostStatus>? _posts;
+    private bool _loaded;
     private string? _error;
     private string? _status;
-    private string _configId = string.Empty;
+    private readonly Dictionary<string, string> _configIds = new(StringComparer.Ordinal);
     private string _degradeTarget = string.Empty;
     private int _quality = 100;
     private int _clarity = 100;
@@ -67,23 +69,34 @@ else
 
     private async Task RefreshAsync()
     {
+        _error = null;
+        _status = null;
         try
         {
-            _error = null;
             _posts = await Directory.OnlinePostsAsync();
+            foreach (PostStatus post in _posts)
+            {
+                _configIds.TryAdd(post.Heartbeat.HostId, string.Empty); // ensure a per-host bound value exists
+            }
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
+        finally
+        {
+            _loaded = true;
+        }
     }
 
-    private Task LaunchAsync(string hostId) => CommandAsync(() => Control.LaunchAsync(hostId, _configId).AsTask());
+    private Task LaunchAsync(string hostId) =>
+        CommandAsync(() => Control.LaunchAsync(hostId, _configIds.GetValueOrDefault(hostId, string.Empty)).AsTask());
 
     private Task StopAsync(string hostId) => CommandAsync(() => Control.StopAsync(hostId).AsTask());
 
     private async Task CommandAsync(Func<Task<AgentCommandResult>> command)
     {
+        _status = null;
         try
         {
             AgentCommandResult result = await command();

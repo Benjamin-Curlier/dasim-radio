@@ -10,6 +10,11 @@
         </nav>
     </header>
     <main>
-        @Body
+        <ErrorBoundary>
+            <ChildContent>@Body</ChildContent>
+            <ErrorContent>
+                <p style="color:#b91c1c;">Something went wrong on this page. Reload to try again.</p>
+            </ErrorContent>
+        </ErrorBoundary>
     </main>
 </div>
