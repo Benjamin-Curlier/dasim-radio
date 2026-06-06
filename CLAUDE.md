@@ -128,12 +128,20 @@ dotnet add <project> package <id>             # add a dependency (CPM)
   `Agent` (#8, PR #29) — `Dasim.Radio.Agent` daemon: presence heartbeat (core-NATS channel + TTL'd
   `presence` KV) + `agent.<host>.cmd` NATS service (launch/stop/reconfigure) + single-client process
   controller (`IProcessRunner` seam, one `Lock`) + validated `AgentOptions` + systemd/Windows Service
-  hosting. Native AOT kept friendly; `PublishAot` deferred (0-warning gate).
-- **Deferred (tracked as issues)**: per-net degrade scoping (currently whole-listener); NATS security
-  refinement (issue #11); under sustained data-plane saturation, drop stale audio rather than buffer
-  (today the publish loop relies on NATS.Net's internal write-pipe back-pressure — see `MediaRouterService`).
-- **Next (Phase 2)**: see [docs/phase2-kickoff.md](docs/phase2-kickoff.md) — Client
-  (Avalonia, ⚠️ spike Wayland PTT first — issue #12), Manager (Blazor), device I/O (`OwnAudioSharp`).
+  hosting. Native AOT kept friendly; `PublishAot` deferred (0-warning gate). `Client` (#9) — headless
+  engine (PTT/floor state machine + transmit/receive pumps), PTT input core (session detect + evdev
+  parse + key-edge), audio conversion/reframing, `CompositePushToTalk` — all **tested**; native PTT
+  providers (`SharpHook`/`evdev`), `OwnAudio` device I/O, and the Avalonia app — **build-only**.
+  `Manager` (#10) — tested `Manager.Core` services (config CRUD, force-tree import/validate, post
+  directory, post control, degrade) + `ClientConfigDto`, behind a **build-only** Blazor UI.
+- **✅ v1 structurally complete**: every host exists. The UI/device/PTT layers (Avalonia app,
+  OwnAudioSharp, SharpHook/evdev, Blazor) are CI-green but **build-only / UNVERIFIED on real
+  hardware** — validate per each PR's manual-test checklist before tagging a release. CI:
+  Build&Test (Linux+Windows) are the required gates; integration (Testcontainers) runs Linux-only;
+  SonarCloud is advisory.
+- **Post-v1 backlog (open issues)**: #11 NATS security (TLS + NKey/JWT + subject perms);
+  #24 per-net degrade scoping (currently whole-listener); #27 drop stale audio under data-plane
+  saturation; #34 `ForceTreeMapper` null-children guard. See [docs/phase2-kickoff.md](docs/phase2-kickoff.md).
 
 ## Subagents (`.claude/agents/`)
 
