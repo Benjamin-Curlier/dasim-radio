@@ -8,14 +8,19 @@ namespace Dasim.Radio.Client.Ptt;
 /// Global push-to-talk via a SharpHook (libuiohook) keyboard hook — the path for Windows and X11
 /// (see <c>docs/wayland-ptt-spike.md</c>; libuiohook does not capture unfocused keys on Wayland).
 /// Build-only: it needs the native hook and a display, so it can't run in headless CI.
+/// <para>
+/// <b>Single-use:</b> a SharpHook hook cannot be restarted once disposed, so <see cref="Stop"/> is
+/// terminal — create a new instance to resume (unlike the reversible <c>ManualPushToTalk</c>).
+/// </para>
 /// </summary>
 public sealed class SharpHookPushToTalk : IPushToTalkHotkey
 {
     private readonly KeyCode _pttKey;
     private readonly ILogger<SharpHookPushToTalk> _logger;
     private readonly IGlobalHook _hook;
+    private bool _running;
     private bool _down;
-    private bool _disposed;
+    private int _disposed;
 
     public SharpHookPushToTalk(KeyCode pttKey, ILogger<SharpHookPushToTalk> logger)
     {
@@ -31,6 +36,13 @@ public sealed class SharpHookPushToTalk : IPushToTalkHotkey
 
     public void Start()
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_running)
+        {
+            return; // already listening
+        }
+
+        _running = true;
         _hook.KeyPressed += OnKeyPressed;
         _hook.KeyReleased += OnKeyReleased;
 
@@ -48,14 +60,18 @@ public sealed class SharpHookPushToTalk : IPushToTalkHotkey
 
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
         {
             return;
         }
 
-        _disposed = true;
-        _hook.KeyPressed -= OnKeyPressed;
-        _hook.KeyReleased -= OnKeyReleased;
+        if (_running)
+        {
+            _hook.KeyPressed -= OnKeyPressed;
+            _hook.KeyReleased -= OnKeyReleased;
+            _running = false;
+        }
+
         _hook.Dispose(); // stops the RunAsync loop
     }
 
