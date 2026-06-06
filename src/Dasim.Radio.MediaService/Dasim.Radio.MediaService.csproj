@@ -11,6 +11,7 @@
     <ProjectReference Include="..\Dasim.Radio.Core\Dasim.Radio.Core.csproj" />
     <ProjectReference Include="..\Dasim.Radio.Contracts\Dasim.Radio.Contracts.csproj" />
     <ProjectReference Include="..\Dasim.Radio.Messaging\Dasim.Radio.Messaging.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Audio.Opus\Dasim.Radio.Audio.Opus.csproj" />
   </ItemGroup>
 
   <ItemGroup>

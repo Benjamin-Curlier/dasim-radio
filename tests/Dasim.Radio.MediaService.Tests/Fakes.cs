@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using Dasim.Radio.Audio;
 using Dasim.Radio.Contracts;
 using Dasim.Radio.Core;
 using Dasim.Radio.MediaService.Floor;
 using Dasim.Radio.MediaService.Routing;
 using Dasim.Radio.Messaging.Audio;
+using Dasim.Radio.Messaging.Degrade;
 using Dasim.Radio.Messaging.Floor;
 using Dasim.Radio.Messaging.KeyValue;
 
@@ -270,4 +272,98 @@ internal sealed class ScriptedAudioBus(IReadOnlyList<AudioFrame> captured) : IAu
 
     public IAsyncEnumerable<byte[]> SubscribeMixedAsync(string clientId, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+}
+
+/// <summary>An <see cref="IDegradeChannel"/> that replays scripted commands, then idles until cancelled.</summary>
+internal sealed class ScriptedDegradeChannel(IReadOnlyList<DegradeCommand> commands) : IDegradeChannel
+{
+    public async IAsyncEnumerable<DegradeCommand> SubscribeAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (DegradeCommand command in commands)
+        {
+            yield return command;
+        }
+
+        await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+    }
+
+    public ValueTask PublishAsync(DegradeCommand command, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>A fake decoder that fills PCM with a constant derived from the packet's first byte.</summary>
+internal sealed class FakeOpusDecoder : IOpusDecoder
+{
+    public AudioFormat Format => AudioFormat.Voice;
+
+    public int Decode(ReadOnlySpan<byte> opus, Span<short> pcm)
+    {
+        short value = opus.Length > 0 ? opus[0] : (short)0;
+        pcm[..AudioFormat.Voice.SamplesPerFrame].Fill(value);
+        return AudioFormat.Voice.SamplesPerChannel;
+    }
+
+    public int DecodeFec(ReadOnlySpan<byte> nextPacket, Span<short> pcm)
+    {
+        pcm[..AudioFormat.Voice.SamplesPerFrame].Clear();
+        return AudioFormat.Voice.SamplesPerChannel;
+    }
+
+    public int DecodeLost(Span<short> pcm)
+    {
+        pcm[..AudioFormat.Voice.SamplesPerFrame].Clear();
+        return AudioFormat.Voice.SamplesPerChannel;
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>A fake encoder that emits a 2-byte marker (so transcoded frames are distinguishable from pass-through).</summary>
+internal sealed class FakeOpusEncoder(OpusEncoderSettings settings) : IOpusEncoder
+{
+    public const byte Marker = 0xEE;
+
+    public AudioFormat Format => AudioFormat.Voice;
+
+    public OpusEncoderSettings Settings { get; } = settings;
+
+    public int Encode(ReadOnlySpan<short> pcm, Span<byte> output)
+    {
+        output[0] = Marker;
+        output[1] = (byte)(pcm[0] & 0xFF); // echo the first PCM sample so we can see the DSP ran
+        return 2;
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>A fake decoder factory that records each decoder it creates.</summary>
+internal sealed class FakeOpusDecoderFactory : IOpusDecoderFactory
+{
+    public List<FakeOpusDecoder> Created { get; } = [];
+
+    public IOpusDecoder Create(AudioFormat format)
+    {
+        var decoder = new FakeOpusDecoder();
+        Created.Add(decoder);
+        return decoder;
+    }
+}
+
+/// <summary>A fake encoder factory that records each encoder (and its settings) it creates.</summary>
+internal sealed class FakeOpusEncoderFactory : IOpusEncoderFactory
+{
+    public List<FakeOpusEncoder> Created { get; } = [];
+
+    public IOpusEncoder Create(AudioFormat format, OpusEncoderSettings? settings = null)
+    {
+        var encoder = new FakeOpusEncoder(settings ?? new OpusEncoderSettings());
+        Created.Add(encoder);
+        return encoder;
+    }
 }
