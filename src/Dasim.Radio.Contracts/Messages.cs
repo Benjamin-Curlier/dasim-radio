@@ -9,8 +9,29 @@ public sealed record FloorRequestMessage(string NetId, string ParticipantId, int
 /// <summary>Push-to-talk released: stop transmitting on a net.</summary>
 public sealed record FloorReleaseMessage(string NetId, string ParticipantId);
 
-/// <summary>A floor decision broadcast to interested clients.</summary>
-public sealed record FloorEventMessage(string NetId, string Outcome, string Requester, string? Preempted);
+/// <summary>
+/// A floor decision broadcast to interested clients. <see cref="CurrentHolder"/> carries the net's
+/// resulting holder (null when idle) so a client that joined late or dropped a packet can render the
+/// current state from the event alone, without reading the eventually-consistent <c>floor_state</c>.
+/// </summary>
+public sealed record FloorEventMessage(
+    string NetId, string Outcome, string Requester, string? Preempted, string? CurrentHolder = null);
+
+/// <summary>The wire values used in <see cref="FloorEventMessage.Outcome"/>.</summary>
+public static class FloorOutcomes
+{
+    /// <summary>Push-to-talk granted on an idle net.</summary>
+    public const string Granted = "granted";
+
+    /// <summary>Push-to-talk granted by pre-empting a lower-priority holder (see <see cref="FloorEventMessage.Preempted"/>).</summary>
+    public const string GrantedWithPreemption = "granted_preemption";
+
+    /// <summary>Push-to-talk denied: the floor is held at equal or higher priority.</summary>
+    public const string Denied = "denied";
+
+    /// <summary>The holder released the floor; the net is now idle.</summary>
+    public const string Released = "released";
+}
 
 /// <summary>Periodic heartbeat from a host agent so the manager can discover posts.</summary>
 public sealed record PresenceHeartbeat(

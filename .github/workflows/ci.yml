@@ -76,7 +76,7 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
-            /d:sonar.coverage.exclusions="**/Dasim.Radio.Audio.Benchmarks/**" \
+            /d:sonar.coverage.exclusions="**/Dasim.Radio.Audio.Benchmarks/**,**/Program.cs" \
             /d:sonar.scanner.scanAll=false
           dotnet build Dasim.Radio.slnx -c Release
           dotnet test Dasim.Radio.slnx -c Release --no-build \
