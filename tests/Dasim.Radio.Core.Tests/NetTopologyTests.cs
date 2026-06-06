@@ -112,4 +112,12 @@ public sealed class NetTopologyTests
         Assert.Empty(topology.Nets);
         Assert.Empty(topology.MembershipOf(Participant("solo")).Nets);
     }
+
+    [Fact]
+    public void The_empty_topology_has_no_nets_or_membership()
+    {
+        Assert.Empty(NetTopology.Empty.Nets);
+        Assert.Empty(NetTopology.Empty.MembersOf(Net(A1)));
+        Assert.Empty(NetTopology.Empty.MembershipOf(Participant("anyone")).Nets);
+    }
 }
