@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Build-only Avalonia client host (excluded from SonarCloud coverage in ci.yml): the UI and the
+    composition of native audio/PTT providers can't run in headless CI. All tested logic lives in the
+    gated libraries (engine, floor machine, PTT input core, audio conversion/framing, composite PTT).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dasim.Radio.Contracts\Dasim.Radio.Contracts.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Audio\Dasim.Radio.Audio.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Audio.Concentus\Dasim.Radio.Audio.Concentus.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Messaging\Dasim.Radio.Messaging.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Client\Dasim.Radio.Client.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Client.Ptt\Dasim.Radio.Client.Ptt.csproj" />
+    <ProjectReference Include="..\Dasim.Radio.Client.Audio.OwnAudio\Dasim.Radio.Client.Audio.OwnAudio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

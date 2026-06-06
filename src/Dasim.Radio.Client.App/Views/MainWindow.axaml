@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Dasim.Radio.Client.App.ViewModels"
+        x:Class="Dasim.Radio.Client.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="440" Height="560"
+        Title="Dasim Radio">
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="14">
+      <TextBlock Text="Dasim Radio" FontSize="24" FontWeight="Bold" />
+      <TextBlock Text="{Binding TransmitNetText}" FontSize="14" Opacity="0.8" />
+
+      <Border Background="#22C55E" CornerRadius="6" Padding="10,6"
+              IsVisible="{Binding IsTransmitting}">
+        <TextBlock Text="● ON AIR" FontWeight="Bold" Foreground="White" />
+      </Border>
+
+      <StackPanel Spacing="2">
+        <TextBlock Text="Floor state" FontWeight="Bold" />
+        <TextBlock Text="{Binding PhaseText}" FontSize="16" />
+        <TextBlock Text="{Binding HoldersText}" TextWrapping="Wrap" Opacity="0.8" />
+      </StackPanel>
+
+      <StackPanel Spacing="2">
+        <TextBlock Text="Microphone" FontWeight="Bold" />
+        <ComboBox ItemsSource="{Binding CaptureDevices}" HorizontalAlignment="Stretch" />
+      </StackPanel>
+
+      <StackPanel Spacing="2">
+        <TextBlock Text="Speaker" FontWeight="Bold" />
+        <ComboBox ItemsSource="{Binding PlaybackDevices}" HorizontalAlignment="Stretch" />
+      </StackPanel>
+
+      <Button x:Name="PttButton"
+              Content="HOLD TO TALK"
+              FontSize="18" FontWeight="Bold"
+              Height="96" HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+    </StackPanel>
+  </ScrollViewer>
+</Window>

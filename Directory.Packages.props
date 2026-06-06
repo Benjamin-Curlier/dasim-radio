@@ -7,6 +7,10 @@
     <!-- Versions are populated via `dotnet add package` (Central Package Management). -->
   </ItemGroup>
   <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="12.0.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.0.4" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.0.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.0.4" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Concentus" Version="2.2.2" />
     <PackageVersion Include="coverlet.msbuild" Version="10.0.1">
