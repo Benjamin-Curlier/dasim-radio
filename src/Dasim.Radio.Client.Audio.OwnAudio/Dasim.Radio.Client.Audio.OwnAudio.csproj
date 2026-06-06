@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Build-only device I/O (excluded from SonarCloud coverage in ci.yml): real capture/playback against
+    OwnAudioSharp's native engine can't run in headless CI or be unit-tested. The testable glue it uses
+    (PcmConvert, PcmFrameAccumulator) lives in the gated Dasim.Radio.Audio library.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dasim.Radio.Audio\Dasim.Radio.Audio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="OwnAudioSharp" />
+  </ItemGroup>
+
+</Project>
