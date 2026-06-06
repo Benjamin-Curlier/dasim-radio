@@ -31,6 +31,17 @@ public sealed class NatsContainerFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
+        // Fast pre-check: on a runner without a Docker daemon (e.g. windows-latest) the Docker client's
+        // connect can HANG well past StartupTimeout (the token isn't honored during the socket/pipe
+        // connect), which is why the whole job timed out. Probing the endpoint first lets such a host
+        // skip in milliseconds instead.
+        if (!DockerEndpointPresent())
+        {
+            Available = false;
+            SkipReason = "No Docker endpoint found (is Docker running with Linux containers?).";
+            return;
+        }
+
         try
         {
             // NatsBuilder.Build() validates the Docker endpoint and throws when it is unreachable,
@@ -46,6 +57,31 @@ public sealed class NatsContainerFixture : IAsyncLifetime
             Available = false;
             SkipReason = $"NATS test container unavailable (is Docker running with Linux containers?): {ex.Message}";
         }
+    }
+
+    // Best-effort, fast check for a local Docker daemon, so the container start is only attempted when
+    // one is likely present. Honors DOCKER_HOST; otherwise looks for the conventional socket/named pipe.
+    private static bool DockerEndpointPresent()
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOCKER_HOST")))
+        {
+            return true;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                return Directory.EnumerateFiles(@"\\.\pipe\")
+                    .Any(pipe => pipe.Contains("docker_engine", StringComparison.OrdinalIgnoreCase));
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
+
+        return File.Exists("/var/run/docker.sock");
     }
 
     public async ValueTask DisposeAsync()
