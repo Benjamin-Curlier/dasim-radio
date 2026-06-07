@@ -25,10 +25,33 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        return services.AddDasimRadioMessagingCore(() => RadioNatsOpts.ForUrl(url), configure);
+    }
 
+    /// <summary>
+    /// Adds the messaging stack from <paramref name="options"/>, applying transport security (a NATS
+    /// <c>.creds</c> file and/or TLS) from configuration. With no credentials and TLS disabled this is
+    /// the same anonymous, plaintext connection as the URL overload — security is opt-in.
+    /// </summary>
+    public static IServiceCollection AddDasimRadioMessaging(
+        this IServiceCollection services,
+        RadioNatsOptions options,
+        Func<NatsOpts, NatsOpts>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Url);
+        return services.AddDasimRadioMessagingCore(() => RadioNatsOpts.Build(options), configure);
+    }
+
+    private static IServiceCollection AddDasimRadioMessagingCore(
+        this IServiceCollection services,
+        Func<NatsOpts> baseOpts,
+        Func<NatsOpts, NatsOpts>? configure)
+    {
         services.TryAddSingleton<INatsConnection>(_ =>
         {
-            NatsOpts opts = RadioNatsOpts.ForUrl(url);
+            NatsOpts opts = baseOpts();
             if (configure is not null)
             {
                 opts = configure(opts);

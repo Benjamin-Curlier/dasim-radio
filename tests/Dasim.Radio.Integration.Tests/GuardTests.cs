@@ -6,6 +6,7 @@ using Dasim.Radio.Messaging.Degrade;
 using Dasim.Radio.Messaging.Floor;
 using Dasim.Radio.Messaging.KeyValue;
 using Dasim.Radio.Messaging.Presence;
+using Dasim.Radio.Messaging.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using NATS.Client.Core;
 using Xunit;
@@ -50,6 +51,51 @@ public sealed class GuardTests
             () => ((IServiceCollection)null!).AddDasimRadioMessaging("nats://localhost:4222"));
         Assert.ThrowsAny<ArgumentException>(
             () => new ServiceCollection().AddDasimRadioMessaging(""));
+    }
+
+    [Fact]
+    public void Build_with_no_security_is_anonymous_plaintext_and_keeps_the_registry()
+    {
+        NatsOpts opts = RadioNatsOpts.Build(new RadioNatsOptions { Url = "nats://localhost:4222" });
+
+        Assert.Equal("nats://localhost:4222", opts.Url);
+        Assert.Null(opts.AuthOpts.CredsFile); // anonymous
+        Assert.Equal(NatsOpts.Default.TlsOpts.Mode, opts.TlsOpts.Mode); // TLS unchanged from the default
+        Assert.Same(RadioSerializerRegistry.Default, opts.SerializerRegistry);
+    }
+
+    [Fact]
+    public void Build_with_a_creds_file_sets_authentication()
+    {
+        NatsOpts opts = RadioNatsOpts.Build(new RadioNatsOptions
+        {
+            Url = "nats://localhost:4222",
+            CredsFile = "/etc/dasim/agent.creds",
+        });
+
+        Assert.Equal("/etc/dasim/agent.creds", opts.AuthOpts.CredsFile);
+    }
+
+    [Fact]
+    public void Build_with_tls_enabled_requires_tls_and_carries_the_ca()
+    {
+        NatsOpts opts = RadioNatsOpts.Build(new RadioNatsOptions
+        {
+            Url = "nats://localhost:4222",
+            Tls = new NatsTlsOptions { Enabled = true, CaFile = "/etc/dasim/ca.pem" },
+        });
+
+        Assert.Equal(TlsMode.Require, opts.TlsOpts.Mode);
+        Assert.Equal("/etc/dasim/ca.pem", opts.TlsOpts.CaFile);
+    }
+
+    [Fact]
+    public void AddDasimRadioMessaging_with_options_validates_arguments()
+    {
+        Assert.Throws<ArgumentNullException>(
+            () => new ServiceCollection().AddDasimRadioMessaging((RadioNatsOptions)null!));
+        Assert.ThrowsAny<ArgumentException>(
+            () => new ServiceCollection().AddDasimRadioMessaging(new RadioNatsOptions { Url = "" }));
     }
 
     [Fact]

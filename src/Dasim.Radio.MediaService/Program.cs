@@ -6,14 +6,15 @@ using Microsoft.Extensions.Hosting;
 
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
-string natsUrl = builder.Configuration.GetValue<string>("Nats:Url") ?? "nats://srv_brk:4222";
+RadioNatsOptions natsOptions =
+    builder.Configuration.GetSection(RadioNatsOptions.SectionName).Get<RadioNatsOptions>() ?? new RadioNatsOptions();
 
 MixCombinePolicy combinePolicy =
     Enum.TryParse(builder.Configuration["Routing:CombinePolicy"], ignoreCase: true, out MixCombinePolicy parsed)
         ? parsed
         : MixCombinePolicy.Override;
 
-builder.Services.AddDasimRadioMessaging(natsUrl);
+builder.Services.AddDasimRadioMessaging(natsOptions);
 builder.Services.AddFloorAuthority();
 builder.Services.AddMediaRouting(combinePolicy);
 
