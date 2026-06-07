@@ -33,6 +33,11 @@ jobs:
         run: dotnet restore Dasim.Radio.slnx
       - name: Build
         run: dotnet build Dasim.Radio.slnx -c Release --no-restore
+      # Formatting/naming drift isn't caught by warnings-as-errors (IDE rules aren't build errors),
+      # so gate it here. OS-independent — run once on Linux. Fails on any whitespace/style/naming diff.
+      - name: Format check (Linux only)
+        if: runner.os == 'Linux'
+        run: dotnet format Dasim.Radio.slnx --verify-no-changes --no-restore
       # Unit tests run on both OSes. The Testcontainers/NATS integration tests need a Linux Docker
       # daemon, which the Windows runner lacks — there they intermittently hang the whole run — so they
       # run on Linux only, below.

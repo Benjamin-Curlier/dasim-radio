@@ -3,8 +3,8 @@
 // aliases so references are unambiguous regardless of the enclosing namespace.
 using ConcentusApplication = global::Concentus.Enums.OpusApplication;
 using NativeFactory = global::Concentus.OpusCodecFactory;
-using NativeOpusEncoder = global::Concentus.IOpusEncoder;
 using NativeOpusDecoder = global::Concentus.IOpusDecoder;
+using NativeOpusEncoder = global::Concentus.IOpusEncoder;
 
 namespace Dasim.Radio.Audio.Concentus;
 
