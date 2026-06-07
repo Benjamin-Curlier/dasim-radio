@@ -4,11 +4,23 @@ A LAN-based, cross-platform (Linux + Windows) voice radio stack that mirrors a m
 chain of command. Push-to-talk respects the hierarchy: a superior pre-empts (cuts off) a
 subordinate on the same net, and a member can talk both up and down the tree.
 
-> Status: **Phase 2 — in progress.** Foundation (floor control + force tree, contracts, CI) plus
-> the messaging layer, the Opus codec seam (Concentus + native libopus), and the **media service**
-> (floor authority + per-listener routing, mix, and degradation) are in place. Remaining hosts —
-> agent, client (Avalonia), manager (Blazor) — are next. See
-> [docs/architecture.md](docs/architecture.md) and [docs/routing-mix-model.md](docs/routing-mix-model.md).
+> Status: **`v1.0.0-rc.1` — structurally complete, not yet hardware-verified.** Every host
+> exists and the solution is CI-green (0 warnings) on Linux **and** Windows with unit +
+> Testcontainers integration tests: `Core`, `Contracts`, `Messaging`, the Opus codec seam
+> (Concentus + native libopus), the **media service** (floor authority + per-listener routing,
+> mix, and degradation), the **agent** daemon, the **client** engine, and the **manager** core.
+> See [docs/architecture.md](docs/architecture.md) and [docs/routing-mix-model.md](docs/routing-mix-model.md).
+>
+> **Before this becomes `v1.0.0`, two release gates remain** — this is a release candidate, not a
+> supported release:
+> 1. **Hardware verification.** The UI/device/PTT surface (Avalonia app, OwnAudioSharp device I/O,
+>    SharpHook/evdev hotkeys, Blazor manager) is **build-only and unverified on real hardware** —
+>    the end-to-end "push a key, be heard" path has not yet been exercised with real audio devices.
+>    Validate each PR's manual-test checklist before tagging `v1.0.0`.
+> 2. **Transport security ([#11](https://github.com/Benjamin-Curlier/dasim-radio/issues/11)).** NATS
+>    currently runs without TLS, authentication, or subject permissions. Until this lands, any host on
+>    the LAN can connect and impersonate any participant, so the chain-of-command clearance model is
+>    not enforced at the transport. Do not deploy outside a trusted lab network.
 
 ## Architecture at a glance
 
@@ -37,18 +49,26 @@ degradation before delivering each client its own stream.
 
 ```
 src/
-  Dasim.Radio.Core            Domain: force tree, floor control, net topology, mix planner
-  Dasim.Radio.Contracts       NATS subjects + wire DTOs (primitives only)
-  Dasim.Radio.Messaging       NATS.Net wrappers (audio bus, KV store, floor/presence/degrade)
-  Dasim.Radio.Audio           Codec + audio I/O abstraction (IOpusEncoder/Decoder)
-  Dasim.Radio.Audio.Concentus Managed-Opus impl (client)
-  Dasim.Radio.Audio.Opus      Native-libopus (OpusSharp) impl (media service)
-  Dasim.Radio.MediaService    The authority host: floor + per-listener routing/mix/degrade
-tests/                        Core · Integration (Testcontainers) · Audio · Audio.Opus · MediaService
-benchmarks/                   BenchmarkDotNet (Opus encode throughput)
-docs/                         architecture.md · routing-mix-model.md · tech-stack.md · phase2-kickoff.md
-Directory.Build.props         Shared build settings (nullable, analyzers, warnings-as-errors)
-Directory.Packages.props      Central Package Management (all NuGet versions)
+  Dasim.Radio.Core              Domain: force tree, floor control, net topology, mix planner
+  Dasim.Radio.Contracts         NATS subjects + wire DTOs (primitives only)
+  Dasim.Radio.Messaging         NATS.Net wrappers (audio bus, KV store, floor/presence/degrade)
+  Dasim.Radio.Audio             Codec + audio I/O abstraction (IOpusEncoder/Decoder)
+  Dasim.Radio.Audio.Concentus   Managed-Opus impl (client)
+  Dasim.Radio.Audio.Opus        Native-libopus (OpusSharp) impl (media service)
+  Dasim.Radio.MediaService      The authority host: floor + per-listener routing/mix/degrade
+  Dasim.Radio.Agent             Host daemon: presence heartbeat + agent.<host>.cmd service + process control
+  Dasim.Radio.Client            Headless client engine (PTT/floor state machine + transmit/receive pumps)
+  Dasim.Radio.Client.Audio.OwnAudio  OwnAudioSharp device I/O (build-only, unverified on hardware)
+  Dasim.Radio.Client.Ptt        Native PTT input (SharpHook/evdev) (build-only, unverified on hardware)
+  Dasim.Radio.Client.App        Avalonia client app (build-only, unverified on hardware)
+  Dasim.Radio.Manager.Core      Manager services (config CRUD, force-tree import/validate, degrade)
+  Dasim.Radio.Manager           Blazor manager UI (build-only, unverified on hardware)
+tests/                          Core · Integration (Testcontainers) · Audio · Audio.Opus · MediaService · Client · Manager
+benchmarks/                     BenchmarkDotNet (Opus encode throughput + mix hot-path)
+tools/Dasim.Radio.LossProbe     Data-plane loss/jitter measurement harness (FEC/PLC decision)
+docs/                           architecture.md · routing-mix-model.md · tech-stack.md · phase2-kickoff.md · wayland-ptt-spike.md
+Directory.Build.props           Shared build settings (nullable, analyzers, warnings-as-errors)
+Directory.Packages.props        Central Package Management (all NuGet versions)
 ```
 
 ## Prerequisites
@@ -80,6 +100,7 @@ An on-prem **self-hosted SonarQube Community** alternative is provided under
 ## Branching model
 
 GitHub Flow: `main` is always releasable; work happens on short-lived `feature/*` branches
-merged via PR. Releases are marked with **tags** (`vX.Y.Z`). A `release/X.Y` branch is
-created only when a version already deployed in the field must be patched without shipping
-the latest `main`. Code, comments, commits and PRs are written in **English**.
+merged via PR. Releases are marked with **tags** (`vX.Y.Z`); pre-releases carrying open
+release gates use a suffix (`vX.Y.Z-rc.N`). A `release/X.Y` branch is created only when a
+version already deployed in the field must be patched without shipping the latest `main`.
+Code, comments, commits and PRs are written in **English**.
