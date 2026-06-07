@@ -146,6 +146,7 @@ public sealed class ProcessClientControllerTests
 
         Assert.False(controller.IsRunning);
         Assert.Null(controller.CurrentConfigId);
+        Assert.True(runner.Started[0].Disposed); // the dead handle is reaped, not pinned until the next command
     }
 
     [Fact]

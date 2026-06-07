@@ -86,6 +86,22 @@ public sealed class MessagingIntegrationTests : IClassFixture<NatsContainerFixtu
     }
 
     [Fact]
+    public async Task AgentCommandClient_returns_not_accepted_when_no_agent_is_listening()
+    {
+        _nats.RequireContainer();
+        using var cts = new CancellationTokenSource(Timeout);
+        await using var clientConnection = _nats.CreateConnection();
+
+        var client = new NatsAgentCommandClient(clientConnection);
+
+        // No server is bound to agent.offline-host.cmd, so NATS reports no responders. The client must
+        // surface the graceful 'not accepted' fallback rather than throwing NatsNoRespondersException.
+        AgentCommandResult result = await client.LaunchAsync("offline-host", "config-1", cts.Token);
+
+        Assert.False(result.Accepted);
+    }
+
+    [Fact]
     public async Task KeyValue_lists_and_watches_keys()
     {
         _nats.RequireContainer();

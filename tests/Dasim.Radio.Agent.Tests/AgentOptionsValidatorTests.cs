@@ -59,4 +59,32 @@ public sealed class AgentOptionsValidatorTests
 
         Assert.True(result.Failed);
     }
+
+    [Theory]
+    [InlineData(8)]  // just over half the 15s TTL
+    [InlineData(15)] // equals the TTL: the key expires before the next beat
+    [InlineData(30)] // well over the TTL
+    public void Rejects_heartbeat_interval_above_half_the_presence_ttl(int seconds)
+    {
+        AgentOptions options = Valid();
+        options.HeartbeatInterval = TimeSpan.FromSeconds(seconds);
+
+        ValidateOptionsResult result = new AgentOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+    }
+
+    [Theory]
+    [InlineData(5)]    // the shipped default
+    [InlineData(7)]    // just under half the 15s TTL
+    [InlineData(7.5)]  // exactly half the TTL — the boundary is allowed
+    public void Accepts_heartbeat_interval_at_or_below_half_the_presence_ttl(double seconds)
+    {
+        AgentOptions options = Valid();
+        options.HeartbeatInterval = TimeSpan.FromSeconds(seconds);
+
+        ValidateOptionsResult result = new AgentOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
 }

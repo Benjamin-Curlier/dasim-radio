@@ -1,3 +1,4 @@
+using Dasim.Radio.Messaging.KeyValue;
 using Microsoft.Extensions.Options;
 
 namespace Dasim.Radio.Agent;
@@ -30,6 +31,17 @@ public sealed class AgentOptionsValidator : IValidateOptions<AgentOptions>
         if (options.HeartbeatInterval <= TimeSpan.Zero)
         {
             return ValidateOptionsResult.Fail("Agent:HeartbeatInterval must be positive.");
+        }
+
+        // The presence key is rewritten each beat under a fixed TTL. If it isn't refreshed at least twice
+        // per TTL window, a single late or dropped beat lets a live post expire and flicker offline — so
+        // the interval must be at most half the presence TTL.
+        TimeSpan maxInterval = ControlPlaneTtls.Presence / 2;
+        if (options.HeartbeatInterval > maxInterval)
+        {
+            return ValidateOptionsResult.Fail(
+                $"Agent:HeartbeatInterval ({options.HeartbeatInterval}) must be at most half the presence " +
+                $"TTL ({ControlPlaneTtls.Presence}), i.e. <= {maxInterval}, so a live post never expires between beats.");
         }
 
         return ValidateOptionsResult.Success;

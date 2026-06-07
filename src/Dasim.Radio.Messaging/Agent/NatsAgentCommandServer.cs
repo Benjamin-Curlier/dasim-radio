@@ -32,10 +32,11 @@ public sealed class NatsAgentCommandServer : IAgentCommandServer
         // Handlers run for the whole life of the service, not just startup. They observe a token
         // tied to the returned handle, so it cancels on shutdown — never the caller's startup token.
         var lifetime = new CancellationTokenSource();
+        INatsSvcServer? server = null;
         try
         {
             var services = new NatsSvcContext(_connection);
-            INatsSvcServer server = await services.AddServiceAsync(
+            server = await services.AddServiceAsync(
                 new NatsSvcConfig(ServiceName, ServiceVersion)
                 {
                     Description = $"Dasim.Radio agent commands for host '{hostId}'.",
@@ -62,6 +63,14 @@ public sealed class NatsAgentCommandServer : IAgentCommandServer
         }
         catch
         {
+            // AddServiceAsync already registered the $SRV.PING/INFO/STATS responders on the live
+            // connection. If endpoint binding then fails we must tear that half-built service down, or
+            // it keeps answering service-discovery pings on the shared connection with no owning handle.
+            if (server is not null)
+            {
+                await server.DisposeAsync();
+            }
+
             lifetime.Dispose();
             throw;
         }

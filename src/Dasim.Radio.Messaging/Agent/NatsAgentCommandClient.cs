@@ -19,10 +19,21 @@ public sealed class NatsAgentCommandClient : IAgentCommandClient
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(command);
 
-        NatsMsg<AgentCommandResult> reply = await _connection.RequestAsync<AgentCommandEnvelope, AgentCommandResult>(
-            Subjects.Control.AgentCommand(hostId), command, cancellationToken: cancellationToken);
+        try
+        {
+            NatsMsg<AgentCommandResult> reply = await _connection.RequestAsync<AgentCommandEnvelope, AgentCommandResult>(
+                Subjects.Control.AgentCommand(hostId), command, cancellationToken: cancellationToken);
 
-        return reply.Data ?? new AgentCommandResult(false, "No response from agent.");
+            return reply.Data ?? new AgentCommandResult(false, "No response from agent.");
+        }
+        catch (NatsNoRespondersException)
+        {
+            // No agent service is listening on this host's subject (the post is offline) — NATS returns a
+            // no-responders status that surfaces here as an exception. Return the same graceful
+            // 'not accepted' result as a null-bodied reply so the contract is uniform whether the host is
+            // silent or absent, instead of making every caller guard this case.
+            return new AgentCommandResult(false, "No response from agent.");
+        }
     }
 
     public ValueTask<AgentCommandResult> LaunchAsync(string hostId, string configId, CancellationToken cancellationToken = default)
