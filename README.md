@@ -45,6 +45,16 @@ degradation before delivering each client its own stream.
 | Messaging | NATS (`NATS.Net`) — JetStream/KV/Services + core |
 | Tests | xUnit v3 + FakeTimeProvider; Testcontainers (NATS) for integration |
 
+## Documentation
+
+| Guide | For |
+|---|---|
+| [Architecture](docs/architecture.md) · [Routing & mix model](docs/routing-mix-model.md) · [Tech stack](docs/tech-stack.md) | Design, decision log, library choices |
+| [Deployment guide](docs/deployment.md) | Standing up NATS + the four hosts on a LAN |
+| [User guide](docs/user-guide.md) | Radio operators (client) and administrators (manager) |
+| [Operations guide](docs/operations.md) | Running the deployed system: discovery, control, observability, faults |
+| [Developer guide](docs/developer-guide.md) | Contributing: build, conventions, testing, workflow |
+
 ## Repository layout
 
 ```
