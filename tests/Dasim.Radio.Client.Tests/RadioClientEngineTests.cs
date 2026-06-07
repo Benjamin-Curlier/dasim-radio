@@ -27,14 +27,20 @@ public sealed class RadioClientEngineTests
         FakeAudioPlaybackDevice Playback,
         ManualPushToTalk Ptt);
 
-    private static Harness Build()
+    private static Harness Build(TimeSpan? floorReadyTimeout = null)
     {
         var bus = new FakeAudioBus();
         var floor = new FakeFloorSignal();
         var capture = new FakeAudioCaptureDevice();
         var playback = new FakeAudioPlaybackDevice();
         var ptt = new ManualPushToTalk();
-        var options = Options.Create(new ClientOptions { ClientId = ClientId, ParticipantId = Me, OwnNetId = Net });
+        var options = Options.Create(new ClientOptions
+        {
+            ClientId = ClientId,
+            ParticipantId = Me,
+            OwnNetId = Net,
+            FloorSubscribeReadyTimeout = floorReadyTimeout ?? TimeSpan.FromSeconds(5),
+        });
 
         var engine = new RadioClientEngine(
             bus, floor, new FakeOpusEncoderFactory(), new FakeOpusDecoderFactory(),
@@ -280,6 +286,82 @@ public sealed class RadioClientEngineTests
         await h.Engine.StopAsync(Ct);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => h.Engine.StartAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Start_waits_for_floor_subscriptions_before_enabling_input()
+    {
+        Harness h = Build();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Floor.SubscribeGate = gate.Task;
+
+        Task start = h.Engine.StartAsync(Ct);
+
+        // While the floor-event subscriptions haven't reported ready, StartAsync must not complete — so
+        // PTT input (enabled only after that await) can't request a floor whose grant we couldn't hear.
+        await Task.Yield();
+        Assert.False(start.IsCompleted);
+
+        gate.SetResult(); // the subscriptions become live on the server
+        await start.WaitAsync(WaitBudget, Ct);
+
+        Assert.True(start.IsCompletedSuccessfully);
+        await h.Engine.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Start_enables_input_after_the_timeout_when_subscriptions_never_report_ready()
+    {
+        Harness h = Build(floorReadyTimeout: TimeSpan.FromMilliseconds(50));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Floor.SubscribeGate = gate.Task; // never released — the subscriptions stay un-ready
+
+        // Despite the subscriptions never confirming, StartAsync gives up after the (tiny) timeout and
+        // enables input rather than hanging — best-effort startup on a slow/absent broker.
+        await h.Engine.StartAsync(Ct);
+
+        try
+        {
+            Task requested = h.Floor.RequestSignal.Next;
+            h.Ptt.Press();
+            await requested.WaitAsync(WaitBudget, Ct);
+            Assert.Single(h.Floor.Requests);
+        }
+        finally
+        {
+            gate.SetResult();
+            await h.Engine.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Stop_racing_the_startup_readiness_wait_does_not_leave_input_enabled()
+    {
+        Harness h = Build();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Floor.SubscribeGate = gate.Task; // hold the subscriptions un-ready so Start parks in its await
+
+        Task start = h.Engine.StartAsync(Ct);
+        await Task.Yield();
+        Assert.False(start.IsCompleted);
+
+        // Stop races in while Start is still waiting for the subscriptions to report ready.
+        await h.Engine.StopAsync(Ct);
+
+        // Start then unwinds — either bails on the post-await lifecycle re-check, or observes the stop's
+        // cancellation. Both are clean; what must NOT happen is input being wired onto the stopped engine.
+        try
+        {
+            await start.WaitAsync(WaitBudget, Ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Acceptable: the readiness wait observed the stop's token cancellation.
+        }
+
+        h.Ptt.Press();
+        Assert.False(h.Capture.Started); // capture was never started onto the stopped engine
+        Assert.Empty(h.Floor.Requests); // and PTT input reaches no handler
     }
 
     [Fact]

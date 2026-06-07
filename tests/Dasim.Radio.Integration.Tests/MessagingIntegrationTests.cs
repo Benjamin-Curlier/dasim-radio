@@ -221,7 +221,7 @@ public sealed class MessagingIntegrationTests : IClassFixture<NatsContainerFixtu
 
         var @event = new FloorEventMessage("net-bravo", "GrantedWithPreemption", "cmd-1", Preempted: "sgt-2");
         FloorEventMessage gotEvent = await ReceiveWithRetryAsync(
-            signal.SubscribeEventsAsync("net-bravo", cts.Token),
+            signal.SubscribeEventsAsync("net-bravo", cancellationToken: cts.Token),
             ct => signal.PublishEventAsync(@event, ct),
             cts.Token);
         Assert.Equal(@event, gotEvent);

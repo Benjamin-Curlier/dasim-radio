@@ -25,6 +25,12 @@ public interface IFloorSignal
     /// <summary>Subscribes to all push-to-talk releases — media service side.</summary>
     IAsyncEnumerable<FloorReleaseMessage> SubscribeReleasesAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Subscribes to floor decisions for one net — client side.</summary>
-    IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(string netId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Subscribes to floor decisions for one net — client side. <paramref name="onSubscribed"/>, if
+    /// supplied, is invoked once the subscription is live on the server, so a caller can wait for
+    /// registration before publishing a request whose grant rides the same un-replayed core-NATS subject
+    /// (otherwise an early grant can be dropped and the client stranded in Requesting).
+    /// </summary>
+    IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(
+        string netId, Action? onSubscribed = null, CancellationToken cancellationToken = default);
 }

@@ -30,6 +30,7 @@ public sealed class NatsFloorSignal : IFloorSignal
     public IAsyncEnumerable<FloorReleaseMessage> SubscribeReleasesAsync(CancellationToken cancellationToken = default) =>
         NatsStreams.DataAsync(_connection.SubscribeAsync<FloorReleaseMessage>(Subjects.Floor.Release, cancellationToken: cancellationToken), cancellationToken);
 
-    public IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(string netId, CancellationToken cancellationToken = default) =>
-        NatsStreams.DataAsync(_connection.SubscribeAsync<FloorEventMessage>(Subjects.Floor.Events(netId), cancellationToken: cancellationToken), cancellationToken);
+    public IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(
+        string netId, Action? onSubscribed = null, CancellationToken cancellationToken = default) =>
+        NatsStreams.DataAsync<FloorEventMessage>(_connection, Subjects.Floor.Events(netId), onSubscribed, cancellationToken);
 }

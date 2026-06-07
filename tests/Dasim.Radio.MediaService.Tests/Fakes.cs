@@ -35,7 +35,8 @@ internal sealed class RecordingFloorSignal : IFloorSignal
     public IAsyncEnumerable<FloorReleaseMessage> SubscribeReleasesAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(string netId, CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(
+        string netId, Action? onSubscribed = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }
 
@@ -102,7 +103,8 @@ internal sealed class ScriptedFloorSignal(
     ValueTask IFloorSignal.ReleaseAsync(FloorReleaseMessage release, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
-    IAsyncEnumerable<FloorEventMessage> IFloorSignal.SubscribeEventsAsync(string netId, CancellationToken cancellationToken) =>
+    IAsyncEnumerable<FloorEventMessage> IFloorSignal.SubscribeEventsAsync(
+        string netId, Action? onSubscribed, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 }
 
