@@ -44,4 +44,18 @@ internal static class RoutingSample
         ForceTree tree = Tree();
         return ForceRouting.Create(1, tree, NetTopology.FromForceTree(tree));
     }
+
+    /// <summary>
+    /// A flat single-net force tree for the floor-authority tests: node <paramref name="net"/> owns a net
+    /// of the same id whose members are <paramref name="members"/>, so each is admitted by the arbiter's
+    /// force-tree membership gate. Priorities here are irrelevant — those tests resolve transmission
+    /// priority from the wire via <c>RequestPriorityResolver</c>; this only establishes membership.
+    /// </summary>
+    public static ForceRouting SingleNet(string net, params string[] members)
+    {
+        ForceNode[] children = [.. members.Select(m => ForceNode.Leaf(m, m, ForceNodeKind.Member, new Priority(0)))];
+        var root = new ForceNode(net, net, ForceNodeKind.Company, new Priority(0), children);
+        ForceTree tree = new(root);
+        return ForceRouting.Create(1, tree, NetTopology.FromForceTree(tree));
+    }
 }

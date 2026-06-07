@@ -15,6 +15,11 @@ public sealed class FloorArbiterTests
 
     private sealed record Harness(FloorArbiter Arbiter, RecordingFloorSignal Signal, RecordingFloorStateWriter Writer);
 
+    // Net "alpha" with every participant the arbiter tests use as a member, so the force-tree membership
+    // gate admits them; arbitration priority still comes from the wire via the resolver under test.
+    private static readonly FakeForceTreeProvider Force = new(
+        RoutingSample.SingleNet("alpha", "p1", "low", "high", "holder", "challenger", "elevated"));
+
     private static Harness Build(IFloorPriorityResolver? resolver = null)
     {
         var floor = new FloorControlService(new FakeTimeProvider(Now));
@@ -25,6 +30,7 @@ public sealed class FloorArbiterTests
             resolver ?? new RequestPriorityResolver(NullLogger<RequestPriorityResolver>.Instance),
             signal,
             writer,
+            Force,
             NullLogger<FloorArbiter>.Instance);
         return new Harness(arbiter, signal, writer);
     }
@@ -124,6 +130,54 @@ public sealed class FloorArbiterTests
         Assert.Equal(written, h.Writer.Written.Count);
     }
 
+    [Theory]
+    [InlineData("alpha", "outsider")] // unknown participant (not in the force tree)
+    [InlineData("bravo", "p1")]       // p1 is a member of 'alpha', not 'bravo'
+    [InlineData(">", "p1")]            // forged/wildcard NetId — a subject-injection attempt
+    [InlineData("a.b", "p1")]          // dotted NetId — a KV-key / multi-token injection attempt
+    public async Task A_request_for_a_net_the_participant_is_not_a_member_of_is_dropped(string net, string participant)
+    {
+        Harness h = Build();
+
+        await h.Arbiter.HandleRequestAsync(Request(net, participant, 5), Ct);
+
+        // No grant, so nothing is broadcast (no floor.events.<net> publish — closing the subject injection)
+        // and nothing is persisted (no floor_state KV key — closing the KV injection). The unknown/forged
+        // net never reaches the floor map either, closing the unbounded-net DoS.
+        Assert.Empty(h.Signal.Published);
+        Assert.Empty(h.Writer.Written);
+    }
+
+    [Fact]
+    public async Task A_non_member_cannot_seize_an_idle_net_held_by_no_one()
+    {
+        // Floor-hijack guard: even an idle net cannot be grabbed by a participant who is not a member of it.
+        Harness h = Build();
+
+        // 'challenger' is a member of 'alpha' (so the gate admits it) — prove a legit member IS granted...
+        await h.Arbiter.HandleRequestAsync(Request("alpha", "challenger", 5), Ct);
+        Assert.Equal(FloorOutcomes.Granted, Assert.Single(h.Signal.Published).Outcome);
+
+        // ...but a request for a net the participant is not on is dropped, leaving the real net untouched.
+        await h.Arbiter.HandleRequestAsync(Request("bravo", "challenger", 9), Ct);
+        Assert.Single(h.Signal.Published); // still just the one granted event for 'alpha'
+    }
+
+    [Theory]
+    [InlineData(">", "p1")]            // forged/wildcard NetId
+    [InlineData("a.b", "p1")]          // dotted NetId (KV-key injection attempt)
+    [InlineData("bravo", "p1")]        // p1 is a member of 'alpha', not 'bravo'
+    [InlineData("alpha", "outsider")]  // unknown participant
+    public async Task A_release_for_a_net_the_participant_is_not_a_member_of_is_dropped(string net, string participant)
+    {
+        Harness h = Build();
+
+        await h.Arbiter.HandleReleaseAsync(new FloorReleaseMessage(net, participant), Ct);
+
+        Assert.Empty(h.Signal.Published);
+        Assert.Empty(h.Writer.Written);
+    }
+
     [Fact]
     public async Task A_stale_release_reordered_after_a_re_request_emits_no_released_event()
     {
@@ -154,6 +208,7 @@ public sealed class FloorArbiterTests
             new RequestPriorityResolver(NullLogger<RequestPriorityResolver>.Instance),
             signal,
             new ThrowingFloorStateWriter(),
+            Force,
             NullLogger<FloorArbiter>.Instance);
 
         await arbiter.HandleRequestAsync(Request("alpha", "p1", 5), Ct);
