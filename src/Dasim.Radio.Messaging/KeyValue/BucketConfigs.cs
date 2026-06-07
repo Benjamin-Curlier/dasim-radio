@@ -7,7 +7,7 @@ namespace Dasim.Radio.Messaging.KeyValue;
 internal static class BucketConfigs
 {
     /// <summary>Stale heartbeats expire so a crashed post disappears from presence.</summary>
-    public static readonly TimeSpan PresenceTtl = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan PresenceTtl = ControlPlaneTtls.Presence;
 
     /// <summary>Revisions of the force tree kept for audit/rollback.</summary>
     public const long ForceTreeHistory = 5;

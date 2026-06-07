@@ -118,7 +118,26 @@ public sealed class ProcessClientController : IClientController, IDisposable
         }
     }
 
-    private bool IsRunningCore() => _handle is { HasExited: false };
+    private bool IsRunningCore()
+    {
+        if (_handle is null)
+        {
+            return false;
+        }
+
+        if (!_handle.HasExited)
+        {
+            return true;
+        }
+
+        // The client exited on its own (crash or clean exit) with no stop/reconfigure command. Release
+        // the dead OS handle now instead of pinning it until the next command. Safe: every caller of
+        // IsRunningCore holds _gate, so this reap is serialized with the state transitions.
+        _handle.Dispose();
+        _handle = null;
+        _currentConfigId = null;
+        return false;
+    }
 
     private AgentCommandResult LaunchCore(string configId)
     {

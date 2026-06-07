@@ -46,8 +46,15 @@ public sealed class NatsControlPlaneStore : IControlPlaneStore
         }
         catch
         {
-            // Never cache a failed bind — let the next caller retry.
-            _bindings.TryRemove(new KeyValuePair<string, Task<INatsKVStore>>(bucket, binding));
+            // Never cache a *failed* bind — but only evict when the bind Task itself faulted/cancelled,
+            // not when this caller's own token cancelled the WaitAsync. Evicting a still-running healthy
+            // bind would break the "bind once and cache" guarantee (every later call re-issues a
+            // JetStream round-trip) while a concurrent caller awaiting the same Task still succeeds.
+            if (binding.IsFaulted || binding.IsCanceled)
+            {
+                _bindings.TryRemove(new KeyValuePair<string, Task<INatsKVStore>>(bucket, binding));
+            }
+
             throw;
         }
     }
