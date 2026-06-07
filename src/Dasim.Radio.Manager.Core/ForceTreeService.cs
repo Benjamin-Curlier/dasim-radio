@@ -21,9 +21,15 @@ public interface IForceTreeService
     /// <summary>Reads the current force tree with its revision, or <c>null</c> if none is stored.</summary>
     ValueTask<ForceTreeImport?> GetCurrentAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Validates and stores <paramref name="tree"/> as the current force tree.</summary>
+    /// <summary>
+    /// Validates and stores <paramref name="tree"/> as the current force tree. Pass the
+    /// <see cref="ForceTreeImport.Revision"/> read via <see cref="GetCurrentAsync"/> as
+    /// <paramref name="expectedRevision"/> for optimistic concurrency: the write is rejected if the stored
+    /// tree changed since that read, so a concurrent import is never silently lost. Pass <c>null</c> for the
+    /// first import (no tree stored yet) — it fails if one already exists.
+    /// </summary>
     /// <exception cref="ForceTreeValidationException">The tree is structurally invalid.</exception>
-    ValueTask ImportAsync(ForceTreeDto tree, CancellationToken cancellationToken = default);
+    ValueTask ImportAsync(ForceTreeDto tree, ulong? expectedRevision = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>JetStream-KV implementation of <see cref="IForceTreeService"/>.</summary>
@@ -40,7 +46,8 @@ public sealed class ForceTreeService(IControlPlaneStore store, ILogger<ForceTree
         return entry is { } found ? new ForceTreeImport(found.Value, found.Revision) : null;
     }
 
-    public async ValueTask ImportAsync(ForceTreeDto tree, CancellationToken cancellationToken = default)
+    public async ValueTask ImportAsync(
+        ForceTreeDto tree, ulong? expectedRevision = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tree);
 
@@ -55,7 +62,21 @@ public sealed class ForceTreeService(IControlPlaneStore store, ILogger<ForceTree
         }
 
         INatsKeyValueStore<ForceTreeDto> bucket = await _store.ForceTreeAsync(cancellationToken).ConfigureAwait(false);
-        await bucket.PutAsync(Subjects.Keys.ForceTreeCurrent, normalized, cancellationToken).ConfigureAwait(false);
+
+        // Optimistic concurrency: write only against the revision the caller read, so a concurrent import
+        // that landed since cannot be silently lost — a racing write surfaces as a conflict to retry. The
+        // first import (no current tree) creates the key, which fails if one already exists.
+        if (expectedRevision is { } revision)
+        {
+            await bucket.UpdateAsync(Subjects.Keys.ForceTreeCurrent, normalized, revision, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            await bucket.CreateAsync(Subjects.Keys.ForceTreeCurrent, normalized, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         _logger.LogInformation("Imported force tree version {Version}.", normalized.Version);
     }
 }

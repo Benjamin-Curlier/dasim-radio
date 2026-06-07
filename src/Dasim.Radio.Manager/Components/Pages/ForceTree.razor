@@ -63,7 +63,9 @@
 
         try
         {
-            await Trees.ImportAsync(tree);
+            // Pass the revision we last loaded for optimistic concurrency: if another admin imported since
+            // this page loaded, the write is rejected (caught below) rather than silently clobbering theirs.
+            await Trees.ImportAsync(tree, _current?.Revision);
             _status = $"Imported version {tree.Version}.";
             await LoadAsync();
         }

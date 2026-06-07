@@ -94,12 +94,52 @@ public sealed class ForceTreeServiceTests
     {
         (ForceTreeService service, FakeKeyValueStore<ForceTreeDto> bucket) = Build();
 
-        await service.ImportAsync(Valid(), Ct);
+        await service.ImportAsync(Valid(), cancellationToken: Ct);
 
         KeyValueEntry<ForceTreeDto>? stored = await bucket.TryGetAsync(Subjects.Keys.ForceTreeCurrent, Ct);
         Assert.NotNull(stored);
         ForceTreeImport? current = await service.GetCurrentAsync(Ct);
         Assert.Equal(1, current!.Tree.Version);
+    }
+
+    [Fact]
+    public async Task Import_with_a_stale_revision_is_rejected_so_a_concurrent_import_is_not_lost()
+    {
+        (ForceTreeService service, _) = Build();
+        await service.ImportAsync(Valid(), cancellationToken: Ct); // first import (create)
+        ulong rev = (await service.GetCurrentAsync(Ct))!.Revision;
+
+        // A concurrent admin imports against that same revision, advancing the stored revision.
+        await service.ImportAsync(Valid() with { Version = 2 }, expectedRevision: rev, cancellationToken: Ct);
+
+        // Our import still using the now-stale revision must be rejected, not silently overwrite theirs.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ImportAsync(Valid() with { Version = 3 }, expectedRevision: rev, cancellationToken: Ct).AsTask());
+
+        Assert.Equal(2, (await service.GetCurrentAsync(Ct))!.Tree.Version); // the concurrent import survived
+    }
+
+    [Fact]
+    public async Task Import_with_the_current_revision_succeeds()
+    {
+        (ForceTreeService service, _) = Build();
+        await service.ImportAsync(Valid(), cancellationToken: Ct);
+        ulong rev = (await service.GetCurrentAsync(Ct))!.Revision;
+
+        await service.ImportAsync(Valid() with { Version = 2 }, expectedRevision: rev, cancellationToken: Ct);
+
+        Assert.Equal(2, (await service.GetCurrentAsync(Ct))!.Tree.Version);
+    }
+
+    [Fact]
+    public async Task First_import_when_a_tree_already_exists_is_rejected()
+    {
+        (ForceTreeService service, _) = Build();
+        await service.ImportAsync(Valid(), cancellationToken: Ct);
+
+        // A revision-less import treats the write as a first create; it must not blind-overwrite an existing tree.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ImportAsync(Valid() with { Version = 9 }, cancellationToken: Ct).AsTask());
     }
 
     [Fact]
@@ -109,7 +149,7 @@ public sealed class ForceTreeServiceTests
         ForceTreeDto invalid = new(1, new ForceNodeDto("root", "HQ", "echelon", 9,
             [new ForceNodeDto("dup", "A", "echelon", 5, []), new ForceNodeDto("dup", "B", "echelon", 5, [])]));
 
-        await Assert.ThrowsAsync<ForceTreeValidationException>(() => service.ImportAsync(invalid, Ct).AsTask());
+        await Assert.ThrowsAsync<ForceTreeValidationException>(() => service.ImportAsync(invalid, cancellationToken: Ct).AsTask());
         Assert.Null(await bucket.TryGetAsync(Subjects.Keys.ForceTreeCurrent, Ct));
     }
 
@@ -120,7 +160,7 @@ public sealed class ForceTreeServiceTests
         ForceTreeDto tree = new(1, new ForceNodeDto("root", "HQ", "echelon", 9,
             [new ForceNodeDto("alpha", "Alpha", "echelon", 5, null!)]));
 
-        await service.ImportAsync(tree, Ct);
+        await service.ImportAsync(tree, cancellationToken: Ct);
 
         ForceTreeImport current = (await service.GetCurrentAsync(Ct))!;
         Assert.NotNull(current.Tree.Root.Children[0].Children);
