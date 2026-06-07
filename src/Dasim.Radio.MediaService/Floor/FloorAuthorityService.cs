@@ -10,6 +10,12 @@ namespace Dasim.Radio.MediaService.Floor;
 /// NATS and funnels both streams through a SINGLE consumer that drives the <see cref="FloorArbiter"/>.
 /// Serializing the side effects keeps each net's events and <c>floor_state</c> writes in decision
 /// order (the decision itself is already serialized per net inside <c>FloorControlService</c>).
+/// <para>
+/// The two producer loops drain independent subscriptions, so a request and a release for the SAME
+/// participant can still be enqueued out of order relative to each other. That cross-stream reorder is
+/// made safe NOT by this single consumer but by the per-participant press sequence carried on the wire
+/// and enforced in <c>FloorControlService</c> (a release that doesn't match the held press is rejected).
+/// </para>
 /// Deliberately thin — all the decision logic lives in (and is tested through) the arbiter.
 /// </summary>
 public sealed class FloorAuthorityService(

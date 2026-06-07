@@ -70,10 +70,14 @@ public sealed class FloorControlService
     /// </summary>
     public long Version => Interlocked.Read(ref _version);
 
-    /// <summary>Requests transmission on a net (push-to-talk pressed).</summary>
-    public FloorDecision RequestFloor(NetId net, ParticipantId participant, Priority priority)
+    /// <summary>
+    /// Requests transmission on a net (push-to-talk pressed). <paramref name="sequence"/> is the
+    /// requester's per-participant monotonic press counter; it lets a later <see cref="ReleaseFloor"/>
+    /// be matched to the press it releases so a reordered stale release can be rejected. 0 = unsequenced.
+    /// </summary>
+    public FloorDecision RequestFloor(NetId net, ParticipantId participant, Priority priority, long sequence = 0)
     {
-        FloorDecision decision = GetFloor(net).Request(participant, priority, _clock.GetUtcNow());
+        FloorDecision decision = GetFloor(net).Request(participant, priority, sequence, _clock.GetUtcNow());
         if (decision.IsGranted && decision.Changed)
         {
             Interlocked.Increment(ref _version);
@@ -82,10 +86,14 @@ public sealed class FloorControlService
         return decision;
     }
 
-    /// <summary>Releases transmission on a net (push-to-talk released).</summary>
-    public FloorDecision ReleaseFloor(NetId net, ParticipantId participant)
+    /// <summary>
+    /// Releases transmission on a net (push-to-talk released). A release whose <paramref name="sequence"/>
+    /// is older than the press the holder currently holds is rejected (a transport reorder placed it after
+    /// the holder re-acquired the floor) so it cannot free a legitimately held floor.
+    /// </summary>
+    public FloorDecision ReleaseFloor(NetId net, ParticipantId participant, long sequence = 0)
     {
-        FloorDecision decision = GetFloor(net).Release(participant);
+        FloorDecision decision = GetFloor(net).Release(participant, sequence);
         if (decision.IsGranted && decision.Changed)
         {
             Interlocked.Increment(ref _version);
@@ -124,14 +132,15 @@ public sealed class FloorControlService
         private ParticipantId? _holder;
         private Priority? _priority;
         private DateTimeOffset? _heldSince;
+        private long _sequence;
 
-        public FloorDecision Request(ParticipantId participant, Priority priority, DateTimeOffset now)
+        public FloorDecision Request(ParticipantId participant, Priority priority, long sequence, DateTimeOffset now)
         {
             lock (_gate)
             {
                 if (_holder is null)
                 {
-                    Acquire(participant, priority, now);
+                    Acquire(participant, priority, sequence, now);
                     return new FloorDecision(FloorOutcome.Granted, net, participant);
                 }
 
@@ -139,16 +148,18 @@ public sealed class FloorControlService
                 {
                     // Already holding: refresh priority and grant idempotently. Only a priority change
                     // actually mutates the held set (the holder's priority is part of what the router
-                    // reads), so a same-priority re-request is a no-op for versioning purposes.
+                    // reads), so a same-priority re-request is a no-op for versioning purposes. Always
+                    // advance to the latest press's sequence so an older, reordered release is rejected.
                     bool changed = _priority!.Value != priority;
                     _priority = priority;
+                    _sequence = sequence;
                     return new FloorDecision(FloorOutcome.Granted, net, participant) { Changed = changed };
                 }
 
                 if (priority > _priority!.Value)
                 {
                     ParticipantId preempted = _holder.Value;
-                    Acquire(participant, priority, now);
+                    Acquire(participant, priority, sequence, now);
                     return new FloorDecision(
                         FloorOutcome.GrantedWithPreemption, net, participant, preempted);
                 }
@@ -161,20 +172,35 @@ public sealed class FloorControlService
             }
         }
 
-        public FloorDecision Release(ParticipantId participant)
+        public FloorDecision Release(ParticipantId participant, long sequence)
         {
             lock (_gate)
             {
-                if (_holder is not null && _holder.Value == participant)
+                if (_holder is null || _holder.Value != participant)
                 {
-                    _holder = null;
-                    _priority = null;
-                    _heldSince = null;
-                    return new FloorDecision(FloorOutcome.Granted, net, participant);
+                    return new FloorDecision(
+                        FloorOutcome.Denied, net, participant, Reason: "Not the current floor holder.");
                 }
 
-                return new FloorDecision(
-                    FloorOutcome.Denied, net, participant, Reason: "Not the current floor holder.");
+                if (sequence != _sequence)
+                {
+                    // The release must match the exact press currently held. Older (< _sequence) = a stale
+                    // release a transport reorder placed after the holder re-acquired the floor; newer = a
+                    // release that overtook its own request (only reachable if a future client breaks the
+                    // request-before-release ordering). Either way, don't free a live hold — that would drop
+                    // the operator's in-progress transmission and emit a spurious 'released' broadcast.
+                    // Restart-reset is safe: the holder's re-assert overwrote _sequence to the press it now
+                    // holds, so the matching release still equals it.
+                    return new FloorDecision(
+                        FloorOutcome.Denied, net, participant,
+                        Reason: "Release does not match the currently held press.");
+                }
+
+                _holder = null;
+                _priority = null;
+                _heldSince = null;
+                _sequence = 0;
+                return new FloorDecision(FloorOutcome.Granted, net, participant);
             }
         }
 
@@ -188,11 +214,12 @@ public sealed class FloorControlService
             }
         }
 
-        private void Acquire(ParticipantId participant, Priority priority, DateTimeOffset now)
+        private void Acquire(ParticipantId participant, Priority priority, long sequence, DateTimeOffset now)
         {
             _holder = participant;
             _priority = priority;
             _heldSince = now;
+            _sequence = sequence;
         }
     }
 }
