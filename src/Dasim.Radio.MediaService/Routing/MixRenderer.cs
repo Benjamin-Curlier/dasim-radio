@@ -26,8 +26,9 @@ public sealed class MixRenderer : IDisposable
 {
     private static readonly AudioFormat Format = AudioFormat.Voice;
 
-    // How long (in render cycles) an idle profile's encoder is kept before disposal, so a brief gap in
-    // a speaker's audio (e.g. DTX) does not throw away the encoder's state. 250 cycles ≈ 5 s at 50 fps.
+    // How long (in render cycles) an idle source's decoder or an idle profile's encoder is kept before
+    // disposal, so a brief gap in a speaker's audio (e.g. DTX) does not throw away codec state. 250
+    // cycles ≈ 5 s at 50 fps.
     private const long IdleCyclesBeforeEvict = 250;
 
     private readonly IOpusDecoderFactory _decoderFactory;
@@ -44,6 +45,7 @@ public sealed class MixRenderer : IDisposable
     private readonly List<Group> _groups = [];
     private readonly List<byte[]> _frameBuffers = [];
     private readonly List<EncodeProfile> _staleKeys = [];
+    private readonly List<ParticipantId> _staleSources = [];
 
     private readonly int[] _mix = new int[Format.SamplesPerFrame];
     private readonly short[] _work = new short[Format.SamplesPerFrame];
@@ -73,6 +75,7 @@ public sealed class MixRenderer : IDisposable
 
         frame.Opus = opus;
         frame.PcmValid = false;
+        frame.LastCycle = _cycle;
     }
 
     /// <summary>
@@ -97,6 +100,7 @@ public sealed class MixRenderer : IDisposable
         }
 
         EvictIdleStreams();
+        EvictIdleSources();
         return _output;
     }
 
@@ -216,6 +220,11 @@ public sealed class MixRenderer : IDisposable
             return null;
         }
 
+        // Tie liveness to actual mix participation, not just publish arrival: an additive peer that is
+        // summed in every cycle but self-publishes slowly (or briefly DTX-gaps) must not be evicted
+        // mid-use — that would drop it from the mix and click when its next frame rebuilds the decoder.
+        frame.LastCycle = _cycle;
+
         if (!frame.PcmValid)
         {
             frame.Decoder ??= _decoderFactory.Create(Format);
@@ -302,6 +311,30 @@ public sealed class MixRenderer : IDisposable
         }
     }
 
+    // Mirror of EvictIdleStreams for the speaker sources: a source whose speaker stopped publishing
+    // (left the roster, reconnected under a new id, or a stray audio.in.* publisher) is removed and its
+    // native decoder disposed. Without this, _sources grows monotonically with every distinct speaker
+    // id ever seen — an unbounded native-handle/buffer leak under client churn.
+    private void EvictIdleSources()
+    {
+        _staleSources.Clear();
+        foreach ((ParticipantId speaker, SourceFrame frame) in _sources)
+        {
+            if (_cycle - frame.LastCycle > IdleCyclesBeforeEvict)
+            {
+                _staleSources.Add(speaker);
+            }
+        }
+
+        foreach (ParticipantId speaker in _staleSources)
+        {
+            if (_sources.Remove(speaker, out SourceFrame? frame))
+            {
+                frame.Decoder?.Dispose();
+            }
+        }
+    }
+
     private Group RentGroup(int index)
     {
         while (_groups.Count <= index)
@@ -378,6 +411,10 @@ public sealed class MixRenderer : IDisposable
 
         // Created lazily on first decode, so an undegraded pass-through never builds a decoder.
         public IOpusDecoder? Decoder { get; set; }
+
+        // The cycle this speaker last published a frame. Lets an idle source (speaker gone or reconnected
+        // under a new id) be evicted and its decoder disposed, mirroring the profile-encoder eviction.
+        public long LastCycle { get; set; }
     }
 
     // The listeners sharing one encode this cycle, plus the source set and degradation to apply.
