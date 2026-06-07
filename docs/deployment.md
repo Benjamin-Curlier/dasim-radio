@@ -135,7 +135,9 @@ host reads `Nats:Url`.
 - **`Agent:HostId`** is the post's stable identity. It is the `agent.<hostId>.cmd` subject token and
   the `presence` KV key, so it **must be a single NATS token** (no `.`, `*`, `>`, whitespace).
   Validated at startup — a bad value fails the host fast.
-- `Agent:HeartbeatInterval` must stay well under the 15s presence TTL (default 5s; validated positive).
+- `Agent:HeartbeatInterval` must stay well under the 15s presence TTL (default 5s). Validated at
+  startup to be **positive and at most half the TTL** (≤ 7.5s), so a live post can't expire between
+  beats — a larger value fails the host fast.
 - `Agent:ClientExecutablePath` is the client binary the agent launches on `launch`/`reconfigure`.
 - `Agent:AllowReplaceRunningClient` — when `false` (default), a `launch` is rejected while a client
   is already running; stop it first.

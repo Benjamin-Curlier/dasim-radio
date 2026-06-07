@@ -76,7 +76,7 @@ src/
 tests/                          Core · Integration (Testcontainers) · Audio · Audio.Opus · MediaService · Client · Manager
 benchmarks/                     BenchmarkDotNet (Opus encode throughput + mix hot-path)
 tools/Dasim.Radio.LossProbe     Data-plane loss/jitter measurement harness (FEC/PLC decision)
-docs/                           architecture.md · routing-mix-model.md · tech-stack.md · phase2-kickoff.md · wayland-ptt-spike.md
+docs/                           architecture.md · routing-mix-model.md · tech-stack.md · deployment.md · user-guide.md · operations.md · developer-guide.md · phase2-kickoff.md · wayland-ptt-spike.md
 Directory.Build.props           Shared build settings (nullable, analyzers, warnings-as-errors)
 Directory.Packages.props        Central Package Management (all NuGet versions)
 ```

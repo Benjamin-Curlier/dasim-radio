@@ -39,7 +39,7 @@ src/
 tests/    Core · Integration (Testcontainers NATS) · Audio · Audio.Opus · MediaService · Client · Manager
 benchmarks/Dasim.Radio.Audio.Benchmarks    BenchmarkDotNet (encode throughput + MixHotPath)
 tools/Dasim.Radio.LossProbe                 Data-plane loss/jitter harness (FEC/PLC decision)
-docs/                                       architecture · routing-mix-model · tech-stack · deployment · user-guide · operations
+docs/                                       architecture · routing-mix-model · tech-stack · deployment · user-guide · operations · developer-guide
 ```
 
 **Dependency rule:** `Core` and `Contracts` have no project dependencies. `Contracts` uses

@@ -5,12 +5,13 @@ choices** and their verification status. Versions are intentionally **not pinned
 add packages with `dotnet add <project> package <id>` so NuGet resolves the real latest, then
 run `dotnet list package --outdated` periodically.
 
-> **Implemented so far:** `NATS.Net` (messaging), `Concentus` + `OpusSharp`/`OpusSharp.Natives`
-> (codec, both behind the `Dasim.Radio.Audio` seam), `xunit.v3`/`coverlet`/`Testcontainers`/
-> `TimeProvider.Testing` (tests), `BenchmarkDotNet`, `Microsoft.Extensions.Hosting`. Still to wire
-> when their hosts are built: `Avalonia`, `OwnAudioSharp`, `SharpHook`, `Serilog`. The risks below
-> (Wayland PTT, PipeWire latency, OwnAudioSharp full-duplex) are **not yet validated** — spike them
-> with the client (item 5).
+> **Implemented:** `NATS.Net` (messaging), `Concentus` + `OpusSharp`/`OpusSharp.Natives` (codec, both
+> behind the `Dasim.Radio.Audio` seam), `xunit.v3`/`coverlet`/`Testcontainers`/`TimeProvider.Testing`
+> (tests), `BenchmarkDotNet`, `Microsoft.Extensions.Hosting`, and — now wired but **build-only,
+> unverified on hardware** — `Avalonia` (client app), `OwnAudioSharp` (device I/O) and `SharpHook`/evdev
+> (PTT). Still to wire: `Serilog` (the hosts use the default .NET console logger today). The risks below
+> (Wayland PTT, PipeWire latency, OwnAudioSharp full-duplex) are the **not-yet-validated hardware gate**
+> for those build-only pieces.
 
 ## Runtime
 
