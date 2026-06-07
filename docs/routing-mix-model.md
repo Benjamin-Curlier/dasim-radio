@@ -107,6 +107,18 @@ transcode path for that listener.
   `PublishAsync` queues into the connection's write pipe (no per-call flush), and back-pressure is
   per-*connection*, so a fronting channel cannot relieve it. Under sustained saturation the right fix
   is **dropping stale audio**, not more buffering — not yet implemented (see `MediaRouterService`).
+- **Receive-side loss concealment (Opus FEC/PLC) — investigated, deferred (won't-do as a standalone
+  effort).** `audio.out` carries no per-frame sequence number, so the client can't detect a gap to drive
+  `IOpusDecoder.DecodeFec`/`DecodeLost`; it decodes what arrives. The decision: voice is core NATS =
+  **TCP**, so isolated single-frame loss — the only thing in-band FEC recovers — effectively never
+  happens; the real losses are **bursts** (reconnect, slow-consumer / #27) that FEC cannot fix and PLC
+  can only briefly mask, and FEC additionally needs a ≥1-frame (20 ms) jitter buffer (latency, against
+  the low-latency LAN goal) + a permanent encoder bitrate tax. Measured with `tools/Dasim.Radio.LossProbe`
+  and its `netem` rig: IP-layer `loss 5%` on the delivery path → **0 application loss** (TCP turns it into
+  jitter); a broker reconnect → **one multi-second burst, 0 % isolated**. If receive-side resilience is
+  ever required, add the sequence number as part of **#27** (stale-audio dropping needs frame ordering
+  anyway) — yielding loss observability as a side effect — rather than as an FEC project. Run the probe
+  on demand as the diagnostic in the meantime.
 
 ### Done — measured perf pass
 
