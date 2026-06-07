@@ -6,8 +6,9 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
-string natsUrl = builder.Configuration["Nats:Url"] ?? "nats://srv_brk:4222";
-builder.Services.AddDasimRadioMessaging(natsUrl);
+RadioNatsOptions natsOptions =
+    builder.Configuration.GetSection(RadioNatsOptions.SectionName).Get<RadioNatsOptions>() ?? new RadioNatsOptions();
+builder.Services.AddDasimRadioMessaging(natsOptions);
 builder.Services.AddDasimRadioManagerCore(builder.Configuration);
 
 WebApplication app = builder.Build();

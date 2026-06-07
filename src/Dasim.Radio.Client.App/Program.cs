@@ -37,8 +37,9 @@ internal static class Program
         services.AddLogging(builder => builder.AddSimpleConsole());
         services.AddSingleton(configuration);
 
-        string natsUrl = configuration["Nats:Url"] ?? "nats://srv_brk:4222";
-        services.AddDasimRadioMessaging(natsUrl);
+        RadioNatsOptions natsOptions =
+            configuration.GetSection(RadioNatsOptions.SectionName).Get<RadioNatsOptions>() ?? new RadioNatsOptions();
+        services.AddDasimRadioMessaging(natsOptions);
         services.AddConcentusOpusCodec();
 
         // Device I/O — defaults unless a device id is configured. (Device re-selection at runtime is a follow-up.)
