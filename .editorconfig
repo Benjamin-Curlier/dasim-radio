@@ -27,7 +27,27 @@ csharp_prefer_braces = true:warning
 csharp_style_var_for_built_in_types = true:suggestion
 csharp_style_expression_bodied_methods = when_on_single_line:suggestion
 
-# Naming: private fields _camelCase
+# Naming. Rules are matched top-to-bottom, first match wins — so the modifier-specific
+# carve-outs (const, static readonly) must precede the catch-all private-field rule. Without
+# them the underscore rule wrongly demands a '_' prefix on PascalCase consts/statics (IDE1006).
+
+# const fields → PascalCase
+dotnet_naming_rule.constant_fields_pascal_case.severity = warning
+dotnet_naming_rule.constant_fields_pascal_case.symbols = constant_fields
+dotnet_naming_rule.constant_fields_pascal_case.style = pascal_case
+dotnet_naming_symbols.constant_fields.applicable_kinds = field
+dotnet_naming_symbols.constant_fields.applicable_accessibilities = *
+dotnet_naming_symbols.constant_fields.required_modifiers = const
+
+# static readonly fields → PascalCase
+dotnet_naming_rule.static_readonly_fields_pascal_case.severity = warning
+dotnet_naming_rule.static_readonly_fields_pascal_case.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_fields_pascal_case.style = pascal_case
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.applicable_accessibilities = *
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+# private instance fields → _camelCase
 dotnet_naming_rule.private_fields_underscore.severity = warning
 dotnet_naming_rule.private_fields_underscore.symbols = private_fields
 dotnet_naming_rule.private_fields_underscore.style = underscore_prefix
@@ -35,3 +55,4 @@ dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 dotnet_naming_style.underscore_prefix.required_prefix = _
 dotnet_naming_style.underscore_prefix.capitalization = camel_case
+dotnet_naming_style.pascal_case.capitalization = pascal_case
