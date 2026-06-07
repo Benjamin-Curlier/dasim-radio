@@ -56,6 +56,8 @@ src/Dasim.Radio.MediaService    The authority host: floor authority + force-tree
 tests/  Core.Tests · Integration.Tests (Testcontainers NATS) · Audio.Tests ·
         Audio.Opus.Tests · MediaService.Tests
 benchmarks/Dasim.Radio.Audio.Benchmarks   BenchmarkDotNet (encode throughput)
+tools/Dasim.Radio.LossProbe     Data-plane loss/jitter measurement harness (seq-gap analyzer,
+                                burst histogram, FEC/PLC decision verdict; local/pub/sub modes)
 docs/architecture.md            Design + decision log (source of truth)
 docs/routing-mix-model.md       Routing/mix design (subtree nets, policies, transmit)
 ```
@@ -142,6 +144,11 @@ dotnet add <project> package <id>             # add a dependency (CPM)
 - **Post-v1 backlog (open issues)**: #11 NATS security (TLS + NKey/JWT + subject perms);
   #24 per-net degrade scoping (currently whole-listener); #27 drop stale audio under data-plane
   saturation; #34 `ForceTreeMapper` null-children guard. See [docs/phase2-kickoff.md](docs/phase2-kickoff.md).
+- **Receive-side loss concealment (under investigation)**: `audio.out` carries no sequence number, so
+  the client can't drive Opus FEC/PLC. Since voice is **core NATS = TCP**, loss is bursty
+  (slow-consumer / reconnect / #27), not the isolated single-frame loss FEC recovers — so FEC is low-ROI
+  and gated on a real-LAN measurement. `tools/Dasim.Radio.LossProbe` measures the isolated-loss fraction
+  to make that call; leaning toward seq-as-NATS-header for observability(+PLC) and **deferring FEC**.
 
 ## Subagents (`.claude/agents/`)
 

@@ -18,6 +18,9 @@
     <Project Path="src/Dasim.Radio.MediaService/Dasim.Radio.MediaService.csproj" />
     <Project Path="src/Dasim.Radio.Messaging/Dasim.Radio.Messaging.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Dasim.Radio.LossProbe/Dasim.Radio.LossProbe.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dasim.Radio.Agent.Tests/Dasim.Radio.Agent.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Audio.Opus.Tests/Dasim.Radio.Audio.Opus.Tests.csproj" />
@@ -27,5 +30,6 @@
     <Project Path="tests/Dasim.Radio.Integration.Tests/Dasim.Radio.Integration.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.Manager.Core.Tests/Dasim.Radio.Manager.Core.Tests.csproj" />
     <Project Path="tests/Dasim.Radio.MediaService.Tests/Dasim.Radio.MediaService.Tests.csproj" />
+    <Project Path="tests/Dasim.Radio.LossProbe.Tests/Dasim.Radio.LossProbe.Tests.csproj" />
   </Folder>
 </Solution>
