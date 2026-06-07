@@ -29,13 +29,7 @@ public static class LocalRunner
         await using var subConnection = new NatsConnection(NatsOptsFactory.ForSubscriber(runOptions));
         await using var pubConnection = new NatsConnection(NatsOptsFactory.ForPublisher(url));
 
-        // Start the subscriber first and let the subscription establish — core NATS has no replay, so
-        // anything published before the interest is registered is simply never delivered.
-        Task<LossReport> subscriberTask = Subscriber.RunAsync(subConnection, runOptions, cancellationToken);
-        await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
-
-        await Publisher.RunAsync(pubConnection, runOptions, cancellationToken).ConfigureAwait(false);
-
-        return await subscriberTask.ConfigureAwait(false);
+        return await ProbeSession.RunAsync(subConnection, pubConnection, runOptions, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

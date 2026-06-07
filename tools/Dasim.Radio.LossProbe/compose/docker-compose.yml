@@ -1,0 +1,48 @@
+# Emulated impaired-LAN rig for the loss probe.
+#
+#   nats    — the broker (core NATS over TCP), port published to the host.
+#   shaper  — shares the nats network namespace and applies `tc netem` to its eth0, so the
+#             EGRESS (nats -> subscriber, i.e. the audio.out delivery path) is impaired. This is
+#             the representative leg for the FEC question.
+#
+# The probe runs on the HOST (fast iteration, valid same-clock latency), pointed at localhost:4222:
+#
+#   # bash:        NETEM="delay 20ms 10ms loss 5%" docker compose up -d
+#   # PowerShell:  $env:NETEM="delay 20ms 10ms loss 5%"; docker compose up -d
+#   dotnet run -c Release --project .. -- both --url nats://127.0.0.1:4222 --duration 30
+#   docker compose down
+#
+# See README.md in this folder for the full runbook (impaired / reconnect / slow-consumer).
+
+services:
+  nats:
+    image: nats:2.10
+    container_name: lossprobe-nats
+    ports:
+      - "4222:4222"
+
+  shaper:
+    image: alpine:3.20
+    container_name: lossprobe-shaper
+    # Share the broker's network stack so `tc` shapes the broker's own interface.
+    network_mode: "service:nats"
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nats
+    # Default is a moderately lossy/jittery link; override with the NETEM env var.
+    environment:
+      - NETEM=${NETEM:-delay 20ms 10ms distribution normal loss 5% reorder 25% 50%}
+    command:
+      - sh
+      - -c
+      - |
+        apk add -q iproute2
+        echo "Applying netem to nats eth0 (egress = delivery to subscriber): $$NETEM"
+        tc qdisc replace dev eth0 root netem $$NETEM
+        tc -s qdisc show dev eth0
+        echo "Shaper holding. Change live with:"
+        echo "  docker compose exec shaper tc qdisc change dev eth0 root netem <args>"
+        echo "Blackout (force a reconnect burst):"
+        echo "  docker compose exec shaper tc qdisc change dev eth0 root netem loss 100%"
+        exec tail -f /dev/null

@@ -43,6 +43,17 @@ try
 
             return 0;
 
+        case ProbeMode.Both:
+            await using (var subConnection = new NatsConnection(NatsOptsFactory.ForSubscriber(options)))
+            await using (var pubConnection = new NatsConnection(NatsOptsFactory.ForPublisher(options.Url)))
+            {
+                LossReport report = await ProbeSession
+                    .RunAsync(subConnection, pubConnection, options, cts.Token).ConfigureAwait(false);
+                Emit(report, options);
+            }
+
+            return 0;
+
         case ProbeMode.Local:
             LossReport localReport = await LocalRunner.RunAsync(options, cts.Token).ConfigureAwait(false);
             Emit(localReport, options);
@@ -123,6 +134,7 @@ static void PrintUsage()
 
         USAGE:
           loss-probe local [options]     Spin a NATS container (Docker) and run pub+sub in-process.
+          loss-probe both  [options]     Run pub+sub in-process against an external --url (the netem rig).
           loss-probe sub   [options]     Subscribe and analyse (run this first on the listener box).
           loss-probe pub   [options]     Publish a paced stream (run on the speaker box).
 
@@ -143,6 +155,8 @@ static void PrintUsage()
         EXAMPLES:
           loss-probe local --duration 20
           loss-probe local --consumer-delay 40 --sub-capacity 16 --sub-fullmode dropnewest
+          # emulated impaired LAN (see compose/ — start the rig first):
+          loss-probe both --url nats://127.0.0.1:4222 --duration 30
           # two machines:
           loss-probe sub --url nats://10.0.0.5:4222
           loss-probe pub --url nats://10.0.0.5:4222 --duration 60

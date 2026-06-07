@@ -14,6 +14,9 @@ public enum ProbeMode
 
     /// <summary>Subscribe to a subject and analyse the stream for loss.</summary>
     Subscribe,
+
+    /// <summary>Run publisher + subscriber in one process against an external NATS (e.g. the netem rig).</summary>
+    Both,
 }
 
 /// <summary>Parsed command-line options for one probe run.</summary>
@@ -83,12 +86,16 @@ public sealed record ProbeOptions
             case "subscribe":
                 mode = ProbeMode.Subscribe;
                 break;
+            case "both":
+                mode = ProbeMode.Both;
+                break;
             default:
-                error.WriteLine($"Unknown mode '{args[0]}'. Expected: local | pub | sub.");
+                error.WriteLine($"Unknown mode '{args[0]}'. Expected: local | pub | sub | both.");
                 return null;
         }
 
-        var options = new ProbeOptions { Mode = mode, SameClock = mode == ProbeMode.Local };
+        // Publisher and subscriber share a clock in the single-process modes, so one-way latency is valid.
+        var options = new ProbeOptions { Mode = mode, SameClock = mode is ProbeMode.Local or ProbeMode.Both };
 
         for (int i = 1; i < args.Length; i++)
         {

@@ -30,17 +30,29 @@ public static class Publisher
             $"Publishing {total} frames of {frame.Length} B at {options.RateHz} fps to '{options.Subject}'…");
 
         long sent = 0;
+        long failed = 0;
         for (long seq = 0; seq < total; seq++)
         {
             await PaceAsync(start, (long)(ticksPerFrame * seq), cancellationToken).ConfigureAwait(false);
 
             ProbeFrame.WriteHeader(frame, (uint)seq, Stopwatch.GetTimestamp());
-            await connection.PublishAsync(options.Subject, frame, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            sent++;
+            try
+            {
+                await connection.PublishAsync(options.Subject, frame, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                sent++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A transient publish failure (e.g. mid-reconnect) must not abort the run — that's exactly
+                // the scenario we measure. Keep pacing; the sequence keeps advancing, so the subscriber
+                // sees the outage as a gap.
+                failed++;
+            }
         }
 
-        Console.WriteLine($"Published {sent} frames.");
+        string suffix = failed > 0 ? $" ({failed} publish failures during the run)" : string.Empty;
+        Console.WriteLine($"Published {sent} frames{suffix}.");
         return sent;
     }
 

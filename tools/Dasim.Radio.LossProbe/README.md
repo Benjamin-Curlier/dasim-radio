@@ -77,6 +77,24 @@ dotnet run -c Release --project tools/Dasim.Radio.LossProbe -- local \
 A subscriber that takes 40 ms per 20 ms frame, with a 16‑deep pending channel that drops the newest
 when full, produces exactly the slow‑consumer drop pattern — watch the gap histogram fill with runs > 1.
 
+## Emulating an impaired LAN (Docker + netem)
+
+No second machine? [`compose/`](compose/README.md) brings up NATS plus a `tc netem` shaper that impairs
+the **delivery** path (latency, jitter, loss, reordering), and you run the probe in **`both`** mode
+(publisher + subscriber in one process, valid one‑way latency) against it:
+
+```bash
+# bash:        NETEM="delay 20ms 10ms loss 5%" docker compose -f compose/docker-compose.yml up -d
+# PowerShell:  $env:NETEM="delay 20ms 10ms loss 5%"; docker compose -f compose/docker-compose.yml up -d
+dotnet run -c Release --project . -- both --url nats://127.0.0.1:4222 --duration 30
+docker compose -f compose/docker-compose.yml down
+```
+
+Because the link is TCP, moderate netem loss shows up as **jitter, not frame loss** (TCP retransmits) —
+which is the point. To see real frame loss, force a reconnect or use the slow‑consumer knobs. The full
+runbook (impaired / reconnect / slow‑consumer, plus a Gilbert–Elliott bursty‑loss model) is in
+[`compose/README.md`](compose/README.md).
+
 ## Interpreting the output
 
 ```
