@@ -37,6 +37,10 @@ public sealed class RadioClientEngine : IAsyncDisposable
 
     private const int CaptureQueueDepth = 4; // ~80 ms of transmit slack before the audio thread drops newest
 
+    // Cap on how long StartAsync waits for the floor-event subscriptions to register before enabling
+    // input anyway. A LAN SUB round-trip is sub-millisecond; this only bounds a slow/absent broker.
+    private static readonly TimeSpan FloorSubscribeReadyTimeout = TimeSpan.FromSeconds(5);
+
     private readonly Lock _lifecycleGate = new();
 
     private volatile bool _transmitting;
@@ -114,7 +118,7 @@ public sealed class RadioClientEngine : IAsyncDisposable
     /// <summary>Raised on every state transition with the new snapshot.</summary>
     public event EventHandler<ClientRadioState>? StateChanged;
 
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_lifecycleGate)
@@ -122,7 +126,7 @@ public sealed class RadioClientEngine : IAsyncDisposable
             switch (_lifecycle)
             {
                 case LifecycleState.Running:
-                    return Task.CompletedTask;
+                    return;
                 case LifecycleState.Stopped:
                     throw new InvalidOperationException("The radio client engine cannot be restarted.");
                 default:
@@ -134,21 +138,61 @@ public sealed class RadioClientEngine : IAsyncDisposable
         _cts = new CancellationTokenSource();
         CancellationToken token = _cts.Token;
 
-        _hotkey.Pressed += OnPressed;
-        _hotkey.Released += OnReleased;
-        _capture.FrameCaptured += OnFrameCaptured;
-
         _controlLoop = Task.Run(() => ControlLoopAsync(token), CancellationToken.None);
         _transmitPump = Task.Run(() => TransmitLoopAsync(token), CancellationToken.None);
         _receivePump = Task.Run(() => ReceiveLoopAsync(token), CancellationToken.None);
-        _floorSubscriptions = [.. _listenNets.Select(net => Task.Run(() => SubscribeFloorAsync(net, token), CancellationToken.None))];
 
-        _playback.Start();
-        _capture.Start();
-        _hotkey.Start();
+        // Start the floor-event subscriptions and wait for them to be live BEFORE enabling PTT input.
+        // Floor events ride core NATS (no replay), so a press whose request is granted before our SUB is
+        // registered would drop the grant and strand us in Requesting. Each subscription signals once its
+        // SUB is established; we gate input on all of them.
+        var ready = _listenNets
+            .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+            .ToArray();
+        _floorSubscriptions = [.. _listenNets.Zip(ready, (net, signal) =>
+            Task.Run(() => SubscribeFloorAsync(net, () => signal.TrySetResult(), token), CancellationToken.None))];
+
+        _playback.Start(); // receive side: safe to start before the floor is observable
+
+        await WaitForFloorSubscriptionsAsync(ready, token).ConfigureAwait(false);
+
+        // Grants are now observable, so it is safe to accept PTT input and capture audio. Attach under
+        // the gate and bail if a StopAsync raced in during the readiness await — otherwise we'd wire
+        // input handlers and start devices onto an already-torn-down engine (its quiesce block, also
+        // gated, already ran). The loops/subscriptions started above are cancelled by that StopAsync.
+        lock (_lifecycleGate)
+        {
+            if (_lifecycle != LifecycleState.Running)
+            {
+                return;
+            }
+
+            _capture.FrameCaptured += OnFrameCaptured;
+            _hotkey.Pressed += OnPressed;
+            _hotkey.Released += OnReleased;
+            _capture.Start();
+            _hotkey.Start();
+        }
 
         _logger.LogInformation("Radio client '{ClientId}' started on net '{Net}'.", _options.ClientId, _options.OwnNetId);
-        return Task.CompletedTask;
+    }
+
+    // Wait for every floor-event subscription to register on the server, bounded by a timeout: if the
+    // broker is slow or unreachable the subscriptions keep retrying in the background and there is no
+    // live floor to miss meanwhile, so input is enabled anyway rather than blocking startup forever.
+    private async Task WaitForFloorSubscriptionsAsync(IReadOnlyList<TaskCompletionSource> ready, CancellationToken token)
+    {
+        try
+        {
+            await Task.WhenAll(ready.Select(static r => r.Task))
+                .WaitAsync(FloorSubscribeReadyTimeout, token).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning(
+                "Floor-event subscriptions were not confirmed within {Timeout}; enabling input anyway.",
+                FloorSubscribeReadyTimeout);
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
@@ -161,14 +205,17 @@ public sealed class RadioClientEngine : IAsyncDisposable
             }
 
             _lifecycle = LifecycleState.Stopped;
-        }
 
-        // Quiesce inputs first so nothing new enters the control loop or the capture channel.
-        _capture.Stop();
-        _capture.FrameCaptured -= OnFrameCaptured;
-        _hotkey.Stop();
-        _hotkey.Pressed -= OnPressed;
-        _hotkey.Released -= OnReleased;
+            // Quiesce inputs under the gate so nothing new enters the control loop or the capture channel,
+            // and so a StartAsync still inside its readiness await (which attaches input under the same
+            // gate) can't wire handlers back on after this detach. Detach of not-yet-attached handlers is
+            // a harmless no-op, which covers the Stop-wins-the-race ordering.
+            _capture.Stop();
+            _capture.FrameCaptured -= OnFrameCaptured;
+            _hotkey.Stop();
+            _hotkey.Pressed -= OnPressed;
+            _hotkey.Released -= OnReleased;
+        }
 
         // Ask the control loop to release any held/pending floor, then drain and finish it cleanly
         // (its token is still live, so the release actually goes out).
@@ -368,13 +415,13 @@ public sealed class RadioClientEngine : IAsyncDisposable
 
     // --- Floor event subscriptions --------------------------------------------------------------
 
-    private async Task SubscribeFloorAsync(string net, CancellationToken token)
+    private async Task SubscribeFloorAsync(string net, Action onSubscribed, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
             try
             {
-                await foreach (FloorEventMessage @event in _floor.SubscribeEventsAsync(net, token).ConfigureAwait(false))
+                await foreach (FloorEventMessage @event in _floor.SubscribeEventsAsync(net, onSubscribed, token).ConfigureAwait(false))
                 {
                     FloorInput input = FloorEventInterpreter.Interpret(@event, _options.ParticipantId);
                     _controlChannel.Writer.TryWrite(ControlInput.FloorEvent(net, input, @event.CurrentHolder));

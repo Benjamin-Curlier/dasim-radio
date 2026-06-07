@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Dasim.Radio.Audio;
 using Dasim.Radio.Contracts;
@@ -82,6 +83,9 @@ internal sealed class FakeFloorSignal : IFloorSignal
     /// <summary>When set, <see cref="RequestAsync"/> throws this (to exercise the engine's resilience).</summary>
     public Exception? RequestException { get; set; }
 
+    /// <summary>When set, a subscription awaits this before reporting itself ready — exercises the startup gate.</summary>
+    public Task? SubscribeGate { get; set; }
+
     /// <summary>Pushes a floor event onto a net's stream.</summary>
     public void PushEvent(string net, FloorEventMessage @event) => EventChannel(net).Writer.TryWrite(@event);
 
@@ -104,8 +108,23 @@ internal sealed class FakeFloorSignal : IFloorSignal
         return ValueTask.CompletedTask;
     }
 
-    public IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(string netId, CancellationToken cancellationToken = default) =>
-        EventChannel(netId).Reader.ReadAllAsync(cancellationToken);
+    public async IAsyncEnumerable<FloorEventMessage> SubscribeEventsAsync(
+        string netId, Action? onSubscribed = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (SubscribeGate is { } gate)
+        {
+            // Token-aware so a shutdown during the gated wait unblocks the subscription (mirrors a real
+            // SUB being cancelled) instead of hanging teardown.
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        onSubscribed?.Invoke();
+
+        await foreach (FloorEventMessage @event in EventChannel(netId).Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            yield return @event;
+        }
+    }
 
     public ValueTask PublishEventAsync(FloorEventMessage @event, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
