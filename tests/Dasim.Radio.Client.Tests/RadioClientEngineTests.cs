@@ -27,14 +27,20 @@ public sealed class RadioClientEngineTests
         FakeAudioPlaybackDevice Playback,
         ManualPushToTalk Ptt);
 
-    private static Harness Build()
+    private static Harness Build(TimeSpan? floorReadyTimeout = null)
     {
         var bus = new FakeAudioBus();
         var floor = new FakeFloorSignal();
         var capture = new FakeAudioCaptureDevice();
         var playback = new FakeAudioPlaybackDevice();
         var ptt = new ManualPushToTalk();
-        var options = Options.Create(new ClientOptions { ClientId = ClientId, ParticipantId = Me, OwnNetId = Net });
+        var options = Options.Create(new ClientOptions
+        {
+            ClientId = ClientId,
+            ParticipantId = Me,
+            OwnNetId = Net,
+            FloorSubscribeReadyTimeout = floorReadyTimeout ?? TimeSpan.FromSeconds(5),
+        });
 
         var engine = new RadioClientEngine(
             bus, floor, new FakeOpusEncoderFactory(), new FakeOpusDecoderFactory(),
@@ -301,6 +307,31 @@ public sealed class RadioClientEngineTests
 
         Assert.True(start.IsCompletedSuccessfully);
         await h.Engine.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Start_enables_input_after_the_timeout_when_subscriptions_never_report_ready()
+    {
+        Harness h = Build(floorReadyTimeout: TimeSpan.FromMilliseconds(50));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Floor.SubscribeGate = gate.Task; // never released — the subscriptions stay un-ready
+
+        // Despite the subscriptions never confirming, StartAsync gives up after the (tiny) timeout and
+        // enables input rather than hanging — best-effort startup on a slow/absent broker.
+        await h.Engine.StartAsync(Ct);
+
+        try
+        {
+            Task requested = h.Floor.RequestSignal.Next;
+            h.Ptt.Press();
+            await requested.WaitAsync(WaitBudget, Ct);
+            Assert.Single(h.Floor.Requests);
+        }
+        finally
+        {
+            gate.SetResult();
+            await h.Engine.DisposeAsync();
+        }
     }
 
     [Fact]

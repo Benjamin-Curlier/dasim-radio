@@ -37,10 +37,6 @@ public sealed class RadioClientEngine : IAsyncDisposable
 
     private const int CaptureQueueDepth = 4; // ~80 ms of transmit slack before the audio thread drops newest
 
-    // Cap on how long StartAsync waits for the floor-event subscriptions to register before enabling
-    // input anyway. A LAN SUB round-trip is sub-millisecond; this only bounds a slow/absent broker.
-    private static readonly TimeSpan FloorSubscribeReadyTimeout = TimeSpan.FromSeconds(5);
-
     private readonly Lock _lifecycleGate = new();
 
     private volatile bool _transmitting;
@@ -185,13 +181,13 @@ public sealed class RadioClientEngine : IAsyncDisposable
         try
         {
             await Task.WhenAll(ready.Select(static r => r.Task))
-                .WaitAsync(FloorSubscribeReadyTimeout, token).ConfigureAwait(false);
+                .WaitAsync(_options.FloorSubscribeReadyTimeout, token).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
             _logger.LogWarning(
                 "Floor-event subscriptions were not confirmed within {Timeout}; enabling input anyway.",
-                FloorSubscribeReadyTimeout);
+                _options.FloorSubscribeReadyTimeout);
         }
     }
 

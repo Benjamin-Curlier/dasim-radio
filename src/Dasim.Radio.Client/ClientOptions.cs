@@ -41,4 +41,10 @@ public sealed class ClientOptions
 
     /// <summary>Opus encoder tuning for the transmit stream. Defaults target LAN voice.</summary>
     public OpusEncoderSettings EncoderSettings { get; set; } = new();
+
+    /// <summary>
+    /// How long <c>StartAsync</c> waits for the floor-event subscriptions to register before enabling PTT
+    /// input anyway. A LAN SUB round-trip is sub-millisecond; this only bounds a slow/absent broker.
+    /// </summary>
+    public TimeSpan FloorSubscribeReadyTimeout { get; set; } = TimeSpan.FromSeconds(5);
 }
