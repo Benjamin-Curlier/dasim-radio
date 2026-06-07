@@ -10,18 +10,22 @@ namespace Dasim.Radio.Client.Audio.OwnAudio;
 /// Captures microphone audio via OwnAudioSharp, reframing the engine's float buffers into the radio's
 /// fixed 20 ms 16-bit frames (<see cref="PcmFrameAccumulator"/>) and raising <see cref="FrameCaptured"/>
 /// on a dedicated read thread. Build-only (needs the native engine + a real device); <b>single-use</b>.
-/// <para><b><see cref="Start"/> blocks</b> while the native engine initializes (tens of ms to several
-/// seconds) — call it off the UI thread.</para>
+/// <para>Opens the device on the read thread and <b>reopens it after a fault</b> (unplug / hot-swap /
+/// driver hiccup) with a short backoff, so a mid-stream device failure doesn't silently kill capture for
+/// the rest of the process — mirroring <c>EvdevPushToTalk</c>. <see cref="Start"/> returns immediately;
+/// capture begins once the device is available. <b>Single-use:</b> <see cref="Stop"/> is terminal.</para>
 /// </summary>
 public sealed class OwnAudioCaptureDevice : IAudioCaptureDevice
 {
+    private static readonly TimeSpan ReopenDelay = TimeSpan.FromSeconds(1);
+
     private readonly string? _deviceId;
     private readonly ILogger<OwnAudioCaptureDevice> _logger;
     private readonly PcmFrameAccumulator _accumulator;
 
-    private IOwnAudioEngine? _engine;
     private CancellationTokenSource? _cts;
     private Thread? _readThread;
+    private bool _started;
     private bool _disposed;
 
     public OwnAudioCaptureDevice(string? deviceId, ILogger<OwnAudioCaptureDevice> logger)
@@ -39,11 +43,94 @@ public sealed class OwnAudioCaptureDevice : IAudioCaptureDevice
     public void Start()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_engine is not null)
+        if (_started)
         {
             return;
         }
 
+        _started = true;
+        _cts = new CancellationTokenSource();
+        _readThread = new Thread(() => ReadLoop(_cts.Token)) { IsBackground = true, Name = "dasim-capture" };
+        _readThread.Start();
+        _logger.LogInformation("OwnAudio capture starting ({Device}).", _deviceId ?? "default");
+    }
+
+    public void Stop() => Dispose();
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        // Cancel: the read thread's cancellation registration Stops the live engine to unblock a Receives
+        // blocked on the device, and the read thread owns the engine's teardown. Join before disposing the
+        // CTS so the thread has finished touching the native engine and can't dereference a disposed one.
+        _cts?.Cancel();
+        if (_readThread is not null && !_readThread.Join(TimeSpan.FromSeconds(3)))
+        {
+            _logger.LogWarning("OwnAudio capture read thread did not stop within the timeout.");
+        }
+
+        _cts?.Dispose();
+    }
+
+    private void ReadLoop(CancellationToken token)
+    {
+        // Open the device, read until it faults, then reopen after a short backoff so a device that is
+        // unplugged / hot-swapped, or whose driver hiccups mid-stream, doesn't kill capture for the rest of
+        // the process. Mirrors EvdevPushToTalk.ReadLoopAsync and the media service's resubscribe loop.
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                IOwnAudioEngine engine = CreateEngine();
+                try
+                {
+                    // Stopping the engine on cancellation unblocks a Receives() blocked on the device (the
+                    // role the evdev loop's stream-dispose registration plays). Disposing the registration
+                    // when the block exits waits for any in-flight Stop callback to finish, so the engine is
+                    // never Stopped on the canceller's thread while being disposed on this one.
+                    using (token.Register(static s => SafeStop((IOwnAudioEngine)s!), engine))
+                    {
+                        int bufferSamples = Math.Max(engine.FramesPerBuffer, Format.SamplesPerChannel) * Format.Channels;
+                        float[] buffer = new float[bufferSamples];
+                        while (!token.IsCancellationRequested)
+                        {
+                            int received = engine.Receives(buffer);
+                            if (received > 0)
+                            {
+                                _accumulator.Append(buffer.AsSpan(0, received), OnFrame);
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    SafeStop(engine);
+                    engine.Dispose();
+                }
+            }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                return; // normal shutdown
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "OwnAudio capture faulted; reopening.");
+                if (token.WaitHandle.WaitOne(ReopenDelay))
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private IOwnAudioEngine CreateEngine()
+    {
         var config = new OwnAudioConfig
         {
             SampleRate = Format.SampleRateHz,
@@ -70,66 +157,19 @@ public sealed class OwnAudioCaptureDevice : IAudioCaptureDevice
             _logger.LogWarning("OwnAudio capture engine Start returned {Code}.", startResult);
         }
 
-        _engine = engine;
-        _cts = new CancellationTokenSource();
-        _readThread = new Thread(() => ReadLoop(engine, _cts.Token)) { IsBackground = true, Name = "dasim-capture" };
-        _readThread.Start();
-        _logger.LogInformation("OwnAudio capture started ({Device}).", _deviceId ?? "default");
+        return engine;
     }
 
-    public void Stop() => Dispose();
-
-    public void Dispose()
+    private static void SafeStop(IOwnAudioEngine engine)
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-
-        // Order matters: cancel so the loop will exit on its next check, Stop to unblock a read currently
-        // waiting on the device, then JOIN the read thread before disposing the engine — otherwise the
-        // thread could dereference a disposed native engine and crash the process.
-        _cts?.Cancel();
         try
         {
-            _engine?.Stop();
+            engine.Stop();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _logger.LogWarning(ex, "OwnAudio capture stop failed.");
-        }
-
-        if (_readThread is not null && !_readThread.Join(TimeSpan.FromSeconds(3)))
-        {
-            _logger.LogWarning("OwnAudio capture read thread did not stop within the timeout.");
-        }
-
-        _engine?.Dispose();
-        _engine = null;
-        _cts?.Dispose();
-    }
-
-    private void ReadLoop(IOwnAudioEngine engine, CancellationToken token)
-    {
-        int bufferSamples = Math.Max(engine.FramesPerBuffer, Format.SamplesPerChannel) * Format.Channels;
-        float[] buffer = new float[bufferSamples];
-
-        try
-        {
-            while (!token.IsCancellationRequested)
-            {
-                int received = engine.Receives(buffer);
-                if (received > 0)
-                {
-                    _accumulator.Append(buffer.AsSpan(0, received), OnFrame);
-                }
-            }
-        }
-        catch (Exception ex) when (!token.IsCancellationRequested)
-        {
-            _logger.LogError(ex, "OwnAudio capture loop faulted.");
+            // Best-effort: Stop only unblocks a pending read / quiesces before dispose; a failure here must
+            // not crash the read thread or mask the real teardown.
         }
     }
 
