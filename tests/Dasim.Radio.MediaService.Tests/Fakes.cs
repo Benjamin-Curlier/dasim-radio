@@ -316,9 +316,10 @@ internal sealed class FakeOpusDecoder : IOpusDecoder
         return AudioFormat.Voice.SamplesPerChannel;
     }
 
-    public void Dispose()
-    {
-    }
+    /// <summary>Set once <see cref="Dispose"/> runs, so a test can prove an idle source was evicted.</summary>
+    public bool Disposed { get; private set; }
+
+    public void Dispose() => Disposed = true;
 }
 
 /// <summary>A fake encoder that emits a 2-byte marker (so transcoded frames are distinguishable from pass-through).</summary>

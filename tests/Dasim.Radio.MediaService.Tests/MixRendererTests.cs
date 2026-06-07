@@ -206,4 +206,26 @@ public sealed class MixRendererTests
 
         Assert.True(forA.Disposed, "the idle profile's encoder should have been evicted and disposed");
     }
+
+    [Fact]
+    public void An_idle_sources_decoder_is_evicted_and_disposed()
+    {
+        _degrade.Apply(Degrade("L1", 50, 100)); // force the transcode path so the source builds a decoder
+        using MixRenderer sut = NewRenderer();
+        sut.Remember(P("a"), new byte[] { 1 });
+
+        // First cycle decodes source a, building its decoder; a then goes silent (never Remembered again).
+        sut.Render([Delivery("L1", "a")]);
+        FakeOpusDecoder forA = _decoders.Created[0];
+
+        // A different speaker keeps publishing while a idles. Drive past the eviction window.
+        for (int i = 0; i < 260; i++)
+        {
+            sut.Remember(P("b"), new byte[] { 2 });
+            sut.Render([Delivery("L1", "b")]);
+        }
+
+        Assert.True(forA.Disposed, "the idle source's decoder should have been evicted and disposed");
+        Assert.False(_decoders.Created[1].Disposed, "the still-active source's decoder must be kept");
+    }
 }
