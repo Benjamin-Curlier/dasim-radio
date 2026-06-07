@@ -1,4 +1,5 @@
 using Dasim.Radio.Core;
+using Dasim.Radio.MediaService.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -21,6 +22,10 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<FloorControlService>();
         services.TryAddSingleton<IFloorPriorityResolver, RequestPriorityResolver>();
         services.TryAddSingleton<IFloorStateWriter, ControlPlaneFloorStateWriter>();
+        // The arbiter authorizes every request/release against the force tree. Default to a deny-by-default
+        // empty provider so the floor authority can stand alone safely; AddMediaRouting replaces it with the
+        // live, KV-watching provider.
+        services.TryAddSingleton<IForceTreeProvider>(_ => new StaticForceTreeProvider(ForceRouting.Empty));
         services.TryAddSingleton<FloorArbiter>();
         services.AddHostedService<FloorAuthorityService>();
 

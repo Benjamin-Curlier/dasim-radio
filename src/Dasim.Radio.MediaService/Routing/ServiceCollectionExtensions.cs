@@ -43,7 +43,10 @@ public static class ServiceCollectionExtensions
         }
 
         services.TryAddSingleton<ForceTreeProvider>();
-        services.TryAddSingleton<IForceTreeProvider>(sp => sp.GetRequiredService<ForceTreeProvider>());
+        // Replace the interim deny-by-default provider that AddFloorAuthority registers with the live,
+        // KV-watching one (a plain TryAdd would leave the empty default in place).
+        services.RemoveAll<IForceTreeProvider>();
+        services.AddSingleton<IForceTreeProvider>(sp => sp.GetRequiredService<ForceTreeProvider>());
         services.AddHostedService(sp => sp.GetRequiredService<ForceTreeProvider>());
 
         // Authoritative force-tree priority replaces the interim RequestPriorityResolver registered by

@@ -1,5 +1,6 @@
 using Dasim.Radio.Contracts;
 using Dasim.Radio.Core;
+using Dasim.Radio.MediaService.Routing;
 using Dasim.Radio.Messaging.Floor;
 using Microsoft.Extensions.Logging;
 
@@ -18,6 +19,7 @@ public sealed class FloorArbiter
     private readonly IFloorPriorityResolver _priority;
     private readonly IFloorSignal _signal;
     private readonly IFloorStateWriter _stateWriter;
+    private readonly IForceTreeProvider _force;
     private readonly ILogger<FloorArbiter> _logger;
 
     public FloorArbiter(
@@ -25,12 +27,14 @@ public sealed class FloorArbiter
         IFloorPriorityResolver priority,
         IFloorSignal signal,
         IFloorStateWriter stateWriter,
+        IForceTreeProvider force,
         ILogger<FloorArbiter> logger)
     {
         _floor = floor ?? throw new ArgumentNullException(nameof(floor));
         _priority = priority ?? throw new ArgumentNullException(nameof(priority));
         _signal = signal ?? throw new ArgumentNullException(nameof(signal));
         _stateWriter = stateWriter ?? throw new ArgumentNullException(nameof(stateWriter));
+        _force = force ?? throw new ArgumentNullException(nameof(force));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -41,6 +45,21 @@ public sealed class FloorArbiter
 
         var net = new NetId(request.NetId);
         var participant = new ParticipantId(request.ParticipantId);
+
+        if (!IsMemberOf(participant, net))
+        {
+            // Authorization + input validation in one gate: a participant may seize the floor only on a
+            // net it belongs to in the authoritative force tree. This rejects an unknown participant, a
+            // request for a net the participant is not on (floor-hijack / net-silencing), and any forged or
+            // malformed NetId — so a wire token never reaches a grant, a floor.events.<netId> publish, a
+            // floor_state KV key, or the per-net floor map. Drop silently (no broadcast that could echo to
+            // a real net or act as an oracle); log for observability.
+            _logger.LogWarning(
+                "Rejected floor request from {Participant} for net {Net}: not a member in the force tree.",
+                request.ParticipantId, request.NetId);
+            return;
+        }
+
         Priority priority = await _priority
             .ResolveAsync(participant, new Priority(request.Priority), cancellationToken)
             .ConfigureAwait(false);
@@ -68,6 +87,16 @@ public sealed class FloorArbiter
         var net = new NetId(release.NetId);
         var participant = new ParticipantId(release.ParticipantId);
 
+        if (!IsMemberOf(participant, net))
+        {
+            // Same gate as the request path — also so a release for a junk net never auto-creates a
+            // per-net floor entry (the unbounded-net-map DoS).
+            _logger.LogWarning(
+                "Rejected floor release from {Participant} for net {Net}: not a member in the force tree.",
+                release.ParticipantId, release.NetId);
+            return;
+        }
+
         FloorDecision decision = _floor.ReleaseFloor(net, participant, release.Sequence);
         if (!decision.IsGranted)
         {
@@ -83,6 +112,23 @@ public sealed class FloorArbiter
         // Released so clients can tell "floor freed" apart from "floor acquired".
         await EmitAsync(net, FloorOutcomes.Released, participant, preempted: null, persistState: true, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    // A participant may act on a net only if the authoritative force tree lists it as a member — the same
+    // membership the router enforces for audio. Force-tree net ids are validated single tokens, so this
+    // gate also bars any malformed or forged NetId from reaching a NATS subject, a KV key, or the net map.
+    private bool IsMemberOf(ParticipantId participant, NetId net)
+    {
+        IReadOnlyList<NetId> nets = _force.Current.Topology.MembershipOf(participant).Nets;
+        for (int i = 0; i < nets.Count; i++)
+        {
+            if (nets[i] == net)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async ValueTask EmitAsync(

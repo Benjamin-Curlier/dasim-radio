@@ -28,11 +28,13 @@ public sealed class FloorAuthorityServiceTests
         var signal = new ScriptedFloorSignal(requests, []);
 
         var floor = new FloorControlService(new FakeTimeProvider(Now));
+        var force = new FakeForceTreeProvider(RoutingSample.SingleNet("alpha", "low", "high"));
         var arbiter = new FloorArbiter(
             floor,
             new RequestPriorityResolver(NullLogger<RequestPriorityResolver>.Instance),
             signal,
             new RecordingFloorStateWriter(),
+            force,
             NullLogger<FloorArbiter>.Instance);
         var service = new FloorAuthorityService(signal, arbiter, NullLogger<FloorAuthorityService>.Instance);
 

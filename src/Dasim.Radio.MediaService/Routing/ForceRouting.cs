@@ -24,3 +24,14 @@ public interface IForceTreeProvider
     /// <summary>The current routing snapshot (never null; <see cref="ForceRouting.Empty"/> until a tree loads).</summary>
     ForceRouting Current { get; }
 }
+
+/// <summary>
+/// A fixed <see cref="IForceTreeProvider"/> that always returns the same snapshot. Registered as the
+/// deny-by-default (<see cref="ForceRouting.Empty"/>) provider by <c>AddFloorAuthority</c> so the floor
+/// authority composes and runs safely on its own — with no force tree, every floor request is denied —
+/// until <c>AddMediaRouting</c> replaces it with the live, KV-watching provider.
+/// </summary>
+public sealed class StaticForceTreeProvider(ForceRouting routing) : IForceTreeProvider
+{
+    public ForceRouting Current { get; } = routing;
+}
