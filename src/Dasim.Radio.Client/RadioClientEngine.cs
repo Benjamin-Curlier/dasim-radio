@@ -43,6 +43,11 @@ public sealed class RadioClientEngine : IAsyncDisposable
     private volatile ClientRadioState _state;
     private long _droppedTransmitFrames;
 
+    // Per-press floor sequence, bumped on each PTT-down request and echoed on the matching release. Owned
+    // by the single control loop (no synchronization needed). Lets the authority reject a stale release a
+    // transport reorder placed after this client re-acquired the floor.
+    private long _floorSequence;
+
     private CancellationTokenSource? _cts;
     private Task? _controlLoop;
     private Task? _transmitPump;
@@ -317,13 +322,16 @@ public sealed class RadioClientEngine : IAsyncDisposable
             switch (effect)
             {
                 case FloorEffect.SendRequest:
+                    // New press: bump the sequence so the matching release can be told apart from this one.
                     await _floor.RequestAsync(
-                        new FloorRequestMessage(_options.OwnNetId, _options.ParticipantId, _options.AdvertisedPriority),
+                        new FloorRequestMessage(
+                            _options.OwnNetId, _options.ParticipantId, _options.AdvertisedPriority, ++_floorSequence),
                         token).ConfigureAwait(false);
                     break;
                 case FloorEffect.SendRelease:
                     await _floor.ReleaseAsync(
-                        new FloorReleaseMessage(_options.OwnNetId, _options.ParticipantId), token).ConfigureAwait(false);
+                        new FloorReleaseMessage(_options.OwnNetId, _options.ParticipantId, _floorSequence),
+                        token).ConfigureAwait(false);
                     break;
                 default:
                     break;

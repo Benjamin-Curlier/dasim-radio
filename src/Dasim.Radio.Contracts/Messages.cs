@@ -3,11 +3,20 @@ namespace Dasim.Radio.Contracts;
 // Wire contracts exchanged over NATS. Deliberately use primitive types only so they
 // serialize cleanly and stay decoupled from the domain model in Dasim.Radio.Core.
 
-/// <summary>Push-to-talk pressed: request to transmit on a net.</summary>
-public sealed record FloorRequestMessage(string NetId, string ParticipantId, int Priority);
+/// <summary>
+/// Push-to-talk pressed: request to transmit on a net. <see cref="Sequence"/> is a per-participant
+/// monotonic press counter set on PTT-down; the matching release carries the same value, letting the
+/// authority reject a stale release that a transport reorder placed after the holder's re-grant.
+/// <c>0</c> means unsequenced (no reorder protection — the legacy/default value).
+/// </summary>
+public sealed record FloorRequestMessage(string NetId, string ParticipantId, int Priority, long Sequence = 0);
 
-/// <summary>Push-to-talk released: stop transmitting on a net.</summary>
-public sealed record FloorReleaseMessage(string NetId, string ParticipantId);
+/// <summary>
+/// Push-to-talk released: stop transmitting on a net. <see cref="Sequence"/> echoes the
+/// <see cref="FloorRequestMessage.Sequence"/> of the press being released, so the authority can ignore
+/// a release that arrives (out of order) after the same participant has already re-acquired the floor.
+/// </summary>
+public sealed record FloorReleaseMessage(string NetId, string ParticipantId, long Sequence = 0);
 
 /// <summary>
 /// A floor decision broadcast to interested clients. <see cref="CurrentHolder"/> carries the net's

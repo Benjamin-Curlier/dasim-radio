@@ -155,6 +155,35 @@ public sealed class RadioClientEngineTests
     }
 
     [Fact]
+    public async Task Each_press_carries_an_incrementing_floor_sequence_echoed_by_its_release()
+    {
+        Harness h = Build();
+        await h.Engine.StartAsync(Ct);
+        try
+        {
+            Task req1 = h.Floor.RequestSignal.Next;
+            h.Ptt.Press();
+            await req1.WaitAsync(WaitBudget, Ct);
+
+            Task rel1 = h.Floor.ReleaseSignal.Next;
+            h.Ptt.Release();
+            await rel1.WaitAsync(WaitBudget, Ct);
+
+            Task req2 = h.Floor.RequestSignal.Next;
+            h.Ptt.Press();
+            await req2.WaitAsync(WaitBudget, Ct);
+
+            Assert.Equal(1, h.Floor.Requests[0].Sequence); // first press
+            Assert.Equal(1, h.Floor.Releases[0].Sequence); // its release echoes the same sequence
+            Assert.Equal(2, h.Floor.Requests[1].Sequence); // the next press increments
+        }
+        finally
+        {
+            await h.Engine.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Audio_is_transmitted_only_after_the_floor_is_granted()
     {
         Harness h = Build();

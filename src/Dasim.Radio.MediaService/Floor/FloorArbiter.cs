@@ -45,7 +45,7 @@ public sealed class FloorArbiter
             .ResolveAsync(participant, new Priority(request.Priority), cancellationToken)
             .ConfigureAwait(false);
 
-        FloorDecision decision = _floor.RequestFloor(net, participant, priority);
+        FloorDecision decision = _floor.RequestFloor(net, participant, priority, request.Sequence);
 
         string outcome = decision.Outcome switch
         {
@@ -68,12 +68,14 @@ public sealed class FloorArbiter
         var net = new NetId(release.NetId);
         var participant = new ParticipantId(release.ParticipantId);
 
-        FloorDecision decision = _floor.ReleaseFloor(net, participant);
+        FloorDecision decision = _floor.ReleaseFloor(net, participant, release.Sequence);
         if (!decision.IsGranted)
         {
-            // A release from someone who is not the holder is a no-op; nothing to broadcast.
+            // A release from a non-holder, or a stale release superseded by the holder's newer press, is a
+            // no-op; nothing to broadcast.
             _logger.LogDebug(
-                "Ignored floor release on net {Net} from non-holder {Participant}.", net.Value, participant.Value);
+                "Ignored floor release on net {Net} from {Participant}: {Reason}",
+                net.Value, participant.Value, decision.Reason);
             return;
         }
 

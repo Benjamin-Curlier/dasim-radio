@@ -125,6 +125,25 @@ public sealed class FloorArbiterTests
     }
 
     [Fact]
+    public async Task A_stale_release_reordered_after_a_re_request_emits_no_released_event()
+    {
+        // The cross-stream race end-to-end: p1 holds (seq 1); a fast PTT bounce re-presses (seq 2), and a
+        // transport reorder delivers that re-request before the earlier release. The stale release (seq 1)
+        // must be ignored — no spurious 'released' broadcast that would drop the live transmission.
+        Harness h = Build();
+        await h.Arbiter.HandleRequestAsync(new FloorRequestMessage("alpha", "p1", 5, Sequence: 1), Ct);
+        await h.Arbiter.HandleRequestAsync(new FloorRequestMessage("alpha", "p1", 5, Sequence: 2), Ct);
+        int published = h.Signal.Published.Count;
+        int written = h.Writer.Written.Count;
+
+        await h.Arbiter.HandleReleaseAsync(new FloorReleaseMessage("alpha", "p1", Sequence: 1), Ct);
+
+        Assert.Equal(published, h.Signal.Published.Count); // no 'released' event emitted
+        Assert.Equal(written, h.Writer.Written.Count);     // no floor_state write
+        Assert.Equal("p1", h.Signal.Published[^1].CurrentHolder); // p1 still holds the floor
+    }
+
+    [Fact]
     public async Task Persistence_failure_does_not_fail_the_decision_or_suppress_the_event()
     {
         // floor_state is observability; a KV write failure must not stop the authoritative event.

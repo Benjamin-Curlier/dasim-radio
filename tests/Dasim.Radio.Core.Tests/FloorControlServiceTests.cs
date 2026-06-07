@@ -102,6 +102,79 @@ public sealed class FloorControlServiceTests
     }
 
     [Fact]
+    public void A_stale_release_reordered_after_a_re_request_does_not_free_the_floor()
+    {
+        // The verifier's scenario: a holder releases (PTT up) then immediately re-presses (PTT down),
+        // and a transport reorder delivers the re-request (seq 2) before the earlier release (seq 1).
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 1); // press 1 -> held (seq 1)
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 2); // re-press -> still held, now seq 2
+
+        FloorDecision stale = _sut.ReleaseFloor(Net, holder, sequence: 1); // press 1's late release
+
+        Assert.False(stale.IsGranted); // rejected as superseded
+        Assert.Equal(FloorStatus.Held, _sut.GetSnapshot(Net).Status);
+        Assert.Equal(holder, _sut.GetSnapshot(Net).Holder); // the operator keeps the floor (PTT still down)
+    }
+
+    [Fact]
+    public void A_release_newer_than_the_held_press_is_rejected()
+    {
+        // Inverse of the stale-release race: a release whose sequence is NEWER than the held press (e.g.
+        // one that overtook its own request) must not free the live hold either — only the exact held
+        // press frees it.
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 5);
+
+        FloorDecision release = _sut.ReleaseFloor(Net, holder, sequence: 7);
+
+        Assert.False(release.IsGranted);
+        Assert.Equal(FloorStatus.Held, _sut.GetSnapshot(Net).Status);
+        Assert.Equal(holder, _sut.GetSnapshot(Net).Holder);
+    }
+
+    [Fact]
+    public void The_release_matching_the_current_press_frees_the_floor()
+    {
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 1);
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 2);
+
+        FloorDecision release = _sut.ReleaseFloor(Net, holder, sequence: 2); // the current press's release
+
+        Assert.True(release.IsGranted);
+        Assert.Equal(FloorStatus.Idle, _sut.GetSnapshot(Net).Status);
+    }
+
+    [Fact]
+    public void A_stale_release_does_not_advance_the_version()
+    {
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 1);
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 2);
+        long version = _sut.Version;
+
+        _sut.ReleaseFloor(Net, holder, sequence: 1); // stale -> ignored
+
+        Assert.Equal(version, _sut.Version); // held set unchanged: the router's cache must not be invalidated
+    }
+
+    [Fact]
+    public void A_holder_that_re_requests_with_a_lower_sequence_can_still_release()
+    {
+        // Restart safety: if a client's counter resets (process restart) and it re-asserts an existing
+        // hold with a lower sequence, the matching release must still free the floor — never wedge it.
+        var holder = new ParticipantId("holder");
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 5); // held seq 5
+        _sut.RequestFloor(Net, holder, new Priority(1), sequence: 1); // re-assert after a counter reset
+
+        FloorDecision release = _sut.ReleaseFloor(Net, holder, sequence: 1);
+
+        Assert.True(release.IsGranted);
+        Assert.Equal(FloorStatus.Idle, _sut.GetSnapshot(Net).Status);
+    }
+
+    [Fact]
     public void Floor_can_be_reacquired_after_release()
     {
         var first = new ParticipantId("a");
