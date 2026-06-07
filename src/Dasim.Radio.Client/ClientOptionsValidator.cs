@@ -34,6 +34,19 @@ public sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
             return ValidateOptionsResult.Fail("Client:ParentNetId must be a single NATS token when set.");
         }
 
+        // The encoder tuning binds from config but is otherwise only validated lazily, inside the transmit
+        // pump (a fire-and-forget Task): a bad value there faults the pump and silently stops ALL
+        // transmission while the client still looks healthy. Validate it up front so misconfiguration
+        // fails fast at ValidateOnStart instead.
+        try
+        {
+            options.EncoderSettings.Validate();
+        }
+        catch (ArgumentException ex)
+        {
+            return ValidateOptionsResult.Fail($"Client:EncoderSettings is invalid: {ex.Message}");
+        }
+
         return ValidateOptionsResult.Success;
     }
 
